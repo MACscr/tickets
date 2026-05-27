@@ -6,6 +6,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 use Padmission\Tickets\Actions\GetUserDisplayName;
 use Padmission\Tickets\Database\Factories\TicketActivityFactory;
 use Padmission\Tickets\Enums\ActivitySender;
@@ -68,6 +69,24 @@ class TicketActivity extends Model
             TicketPlugin::resolveUserModelClass(),
             'user'
         );
+    }
+
+    public function plainTextContent(?int $words = null): ?string
+    {
+        $content = $this->content;
+
+        if ($content === null) {
+            return null;
+        }
+
+        $spacedContent = preg_replace('/<br\s*\/?>|<\/(?:p|div|li|h[1-6]|blockquote|pre|tr)>/i', ' ', (string) $content) ?? (string) $content;
+        $plainText = Str::squish(html_entity_decode(strip_tags($spacedContent), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+
+        if ($plainText === '') {
+            return null;
+        }
+
+        return $words === null ? $plainText : Str::words($plainText, $words);
     }
 
     /**
