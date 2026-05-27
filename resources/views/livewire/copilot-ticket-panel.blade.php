@@ -74,7 +74,7 @@
                                         {{ $ticket->subject }}
                                     </p>
                                     <p class="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">
-                                        {{ strip_tags((string) $ticket->latestMessage?->content) ?: __('padmission-tickets::tickets.copilot.no_messages') }}
+                                        {{ html_entity_decode(strip_tags((string) $ticket->latestMessage?->content), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?: __('padmission-tickets::tickets.copilot.no_messages') }}
                                     </p>
                                 </div>
                                 @if ($ticket->status || $ticket->has_unread_support_response)

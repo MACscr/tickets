@@ -19,6 +19,15 @@ class CopilotTicketPanel extends Component
 
     public ?int $activeTicketId = null;
 
+    public function mount(?int $initialTicketId = null): void
+    {
+        if (! $initialTicketId) {
+            return;
+        }
+
+        $this->selectTicket($initialTicketId);
+    }
+
     public function render(): View
     {
         $user = $this->user();
