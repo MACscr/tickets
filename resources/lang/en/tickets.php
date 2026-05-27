@@ -44,6 +44,38 @@ return [
         ],
     ],
 
+    'copilot' => [
+        'title' => 'Support tickets',
+        'subtitle' => 'Create and follow up on support requests.',
+        'new_ticket' => 'New ticket',
+        'empty_title' => 'No tickets found',
+        'empty_body' => 'Create a ticket when you need help from support.',
+        'create_title' => 'New support ticket',
+        'create_subtitle' => 'Send the details support needs to start helping.',
+        'subject' => 'Subject',
+        'message' => 'Message',
+        'cancel' => 'Cancel',
+        'create' => 'Create ticket',
+        'resolve' => 'Resolve',
+        'reply' => 'Reply',
+        'send_reply' => 'Send reply',
+        'unread' => 'Unread',
+        'status' => 'Status',
+        'priority' => 'Priority',
+        'assignee' => 'Assignee',
+        'disposition' => 'Disposition',
+        'unassigned' => 'Unassigned',
+        'no_disposition' => 'No disposition',
+        'save_metadata' => 'Save metadata',
+        'no_messages' => 'No messages yet',
+        'closed_ticket_reply_error' => 'This ticket is already resolved.',
+        'filters' => [
+            'open' => 'Open',
+            'closed' => 'Resolved',
+            'all' => 'All',
+        ],
+    ],
+
     'resources' => [
         'navigation_group' => 'Tickets',
 

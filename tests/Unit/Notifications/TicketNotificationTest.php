@@ -2,6 +2,7 @@
 
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
+use Padmission\Tickets\Models\TicketUserState;
 use Padmission\Tickets\Notifications\TicketNotification;
 use Padmission\Tickets\Services\EmailLogoService;
 use Padmission\Tickets\Services\EmailStyleService;
@@ -57,10 +58,10 @@ test('respects debounce time window', function () {
     $firstMail = $notification->toMail($user);
 
     // Verify notification record was created
-    expect($ticket->ticketNotifications()->where('user_id', $user->id)->count())
+    expect($ticket->ticketUserStates()->where('user_id', $user->id)->count())
         ->toBe(1);
 
-    $originalNotification = $ticket->ticketNotifications()->where('user_id', $user->id)->first();
+    $originalNotification = $ticket->ticketUserStates()->where('user_id', $user->id)->first();
     $originalTimestamp = $originalNotification->updated_at->timestamp;
 
     // Travel forward in time (within debounce window)
@@ -80,7 +81,7 @@ test('respects debounce time window', function () {
     $secondMail = $secondNotification->toMail($user);
 
     // Should STILL only have 1 notification record (updated, not created new)
-    expect($ticket->ticketNotifications()->where('user_id', $user->id)->count())
+    expect($ticket->ticketUserStates()->where('user_id', $user->id)->count())
         ->toBe(1);
 
     // Refresh the notification record and check it was updated
@@ -108,8 +109,37 @@ test('notifications are isolated per user', function () {
     $notification->toMail($user2);
 
     // Should have separate notification records
-    expect($ticket->ticketNotifications()->where('user_id', $user1->id)->count())->toBe(1);
-    expect($ticket->ticketNotifications()->where('user_id', $user2->id)->count())->toBe(1);
+    expect($ticket->ticketUserStates()->where('user_id', $user1->id)->count())->toBe(1);
+    expect($ticket->ticketUserStates()->where('user_id', $user2->id)->count())->toBe(1);
+});
+
+test('notification sending records the last notified activity without changing last seen state', function () {
+    $user = User::factory()->create();
+    $ticket = Ticket::factory()->create();
+
+    $seenActivity = TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'created_at' => now()->subMinutes(10),
+    ]);
+
+    $notifiedActivity = TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'created_at' => now()->subMinute(),
+    ]);
+
+    TicketUserState::factory()->create([
+        'ticket_id' => $ticket->id,
+        'user_id' => $user->id,
+        'last_seen_activity_id' => $seenActivity->id,
+    ]);
+
+    (new TicketNotification($ticket, 'history'))->toMail($user);
+
+    $state = $ticket->ticketUserStates()->where('user_id', $user->id)->first();
+
+    expect($state)
+        ->last_seen_activity_id->toBe($seenActivity->id)
+        ->last_notified_activity_id->toBe($notifiedActivity->id);
 });
 
 test('generates correct email subject for different types', function () {

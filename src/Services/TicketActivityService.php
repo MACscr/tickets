@@ -5,7 +5,7 @@ namespace Padmission\Tickets\Services;
 use Illuminate\Support\Collection;
 use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Models\Ticket;
-use Padmission\Tickets\Models\TicketNotification;
+use Padmission\Tickets\Models\TicketUserState;
 
 class TicketActivityService
 {
@@ -18,7 +18,7 @@ class TicketActivityService
         int $maxEvents,
         int $maxDays
     ): Collection {
-        $lastNotification = $this->getLastNotification($ticket, $notifiable);
+        $userState = $this->getUserState($ticket, $notifiable);
 
         return $ticket
             ->ticketActivities()
@@ -26,44 +26,72 @@ class TicketActivityService
             ->where('created_at', '>', now()->subDays($maxDays))
             ->where('created_at', '<=', now())
             ->where('type', '!=', ActivityType::TurnChanged)
-            ->when($lastNotification, function ($query) use ($lastNotification) {
-                $query->where('created_at', '>', $lastNotification->updated_at);
+            ->when($userState?->last_notified_activity_id, function ($query, int|string $lastNotifiedActivityId) {
+                $query->where('id', '>', $lastNotifiedActivityId);
             })
             ->orderBy('created_at', 'asc')
             ->limit($maxEvents)
             ->get();
     }
 
-    /**
-     * Get the last notification record for a user and ticket
-     */
-    public function getLastNotification(Ticket $ticket, $notifiable): ?TicketNotification
+    public function getUserState(Ticket $ticket, $notifiable): ?TicketUserState
     {
-        /** @var TicketNotification|null $notification */
-        $notification = $ticket
-            ->ticketNotifications()
+        /** @var TicketUserState|null $userState */
+        $userState = $ticket
+            ->ticketUserStates()
             ->where('user_id', $notifiable->getKey())
             ->latest()
             ->first();
 
-        return $notification;
+        return $userState;
     }
 
-    /**
-     * Mark notification as updated or create a new notification record
-     */
+    public function markActivitiesNotified(Ticket $ticket, $notifiable, ?int $lastNotifiedActivityId = null): void
+    {
+        $userState = $this->getUserState($ticket, $notifiable);
+
+        if ($userState) {
+            if ($lastNotifiedActivityId) {
+                $userState->last_notified_activity_id = $lastNotifiedActivityId;
+                $userState->save();
+
+                return;
+            }
+
+            $userState->touch();
+
+            return;
+        }
+
+        $values = [];
+
+        if ($lastNotifiedActivityId) {
+            $values['last_notified_activity_id'] = $lastNotifiedActivityId;
+        }
+
+        $ticket->ticketUserStates()->create([
+            'user_id' => $notifiable->getKey(),
+            ...$values,
+        ]);
+    }
+
+    public function getLastNotification(Ticket $ticket, $notifiable): ?TicketUserState
+    {
+        return $this->getUserState($ticket, $notifiable);
+    }
+
     public function markNotificationUpdated(Ticket $ticket, $notifiable): void
     {
-        $lastNotification = $this->getLastNotification($ticket, $notifiable);
+        $lastNotifiedActivityId = $ticket
+            ->ticketActivities()
+            ->where('type', '!=', ActivityType::TurnChanged)
+            ->latest('id')
+            ->value('id');
 
-        if ($lastNotification) {
-            $lastNotification->update([
-                'updated_at' => now(),
-            ]);
+        if (is_numeric($lastNotifiedActivityId)) {
+            $this->markActivitiesNotified($ticket, $notifiable, (int) $lastNotifiedActivityId);
         } else {
-            $ticket->ticketNotifications()->create([
-                'user_id' => $notifiable->getKey(),
-            ]);
+            $this->markActivitiesNotified($ticket, $notifiable);
         }
     }
 }

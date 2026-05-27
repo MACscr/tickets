@@ -3,7 +3,8 @@
 use Illuminate\Support\Facades\Config;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
-use Padmission\Tickets\Models\TicketNotification;
+use Padmission\Tickets\Models\TicketUserState;
+use Padmission\Tickets\Notifications\TicketNotification;
 use Padmission\Tickets\Services\TicketActivityService;
 use Padmission\Tickets\Tests\User;
 
@@ -32,23 +33,22 @@ test('can get unread activities within date range', function () {
     expect($activities->first()->id)->toBe($newActivity->id);
 });
 
-test('can get unread activities within date range with latestNotification', function () {
-    TicketNotification::factory()->create([
-        'user_id' => $this->user->id,
-        'ticket_id' => $this->ticket->id,
-        'updated_at' => now()->subDays(3),
-    ]);
-
-    // Create an old activity (should be included, but is after lastNotification)
-    TicketActivity::factory()->create([
+test('can get unread activities within date range with latest notification state', function () {
+    $oldActivity = TicketActivity::factory()->create([
         'ticket_id' => $this->ticket->id,
         'created_at' => now()->subDays(4),
     ]);
 
-    // Create a new activity (should be included)
     $newActivity = TicketActivity::factory()->create([
         'ticket_id' => $this->ticket->id,
         'created_at' => now()->subDays(2),
+    ]);
+
+    TicketUserState::factory()->create([
+        'user_id' => $this->user->id,
+        'ticket_id' => $this->ticket->id,
+        'last_notified_activity_id' => $oldActivity->id,
+        'updated_at' => now(),
     ]);
 
     $activities = $this->service->getUnreadActivities($this->ticket, $this->user, 10, 7);
@@ -57,35 +57,35 @@ test('can get unread activities within date range with latestNotification', func
     expect($activities->first()->id)->toBe($newActivity->id);
 });
 
-test('can get last notification for user and ticket', function () {
+test('can get user state for user and ticket', function () {
     $userB = User::factory()->create();
     $ticketB = Ticket::factory()->create();
 
-    $notification = TicketNotification::factory()->create([
+    $notification = TicketUserState::factory()->create([
         'ticket_id' => $this->ticket->id,
         'user_id' => $this->user->id,
     ]);
 
-    TicketNotification::factory()->create([
+    TicketUserState::factory()->create([
         'ticket_id' => $this->ticket->id,
         'user_id' => $userB->id,
     ]);
 
-    TicketNotification::factory()->create([
+    TicketUserState::factory()->create([
         'ticket_id' => $ticketB->id,
         'user_id' => $this->user->id,
     ]);
 
-    $lastNotification = $this->service->getLastNotification($this->ticket, $this->user);
+    $userState = $this->service->getUserState($this->ticket, $this->user);
 
-    expect($lastNotification)->not->toBeNull();
-    expect($lastNotification->id)->toBe($notification->id);
+    expect($userState)->not->toBeNull();
+    expect($userState->id)->toBe($notification->id);
 });
 
-test('returns null when no notification exists', function () {
-    $lastNotification = $this->service->getLastNotification($this->ticket, $this->user);
+test('returns null when no user state exists', function () {
+    $userState = $this->service->getUserState($this->ticket, $this->user);
 
-    expect($lastNotification)->toBeNull();
+    expect($userState)->toBeNull();
 });
 
 test('respects max events configuration', function () {
@@ -101,7 +101,7 @@ test('respects max events configuration', function () {
         ]);
     }
 
-    $notification = new \Padmission\Tickets\Notifications\TicketNotification($ticket, 'history');
+    $notification = new TicketNotification($ticket, 'history');
 
     // Use the activity service to get unread activities
     $activityService = app(TicketActivityService::class);
@@ -110,34 +110,31 @@ test('respects max events configuration', function () {
     expect($activities)->toHaveCount(2); // Should limit to 2
 });
 
-test('returns null when user has no previous notifications for ticket', function () {
+test('returns null when user has no previous state for ticket', function () {
     $user = User::factory()->create();
     $ticket = Ticket::factory()->create();
-    $notification = new \Padmission\Tickets\Notifications\TicketNotification($ticket, 'history');
+    $notification = new TicketNotification($ticket, 'history');
 
-    // Use the activity service to get the last notification
     $activityService = app(TicketActivityService::class);
-    $lastNotification = $activityService->getLastNotification($ticket, $user);
+    $userState = $activityService->getUserState($ticket, $user);
 
-    expect($lastNotification)->toBeNull();
+    expect($userState)->toBeNull();
 });
 
-test('gets last notification for specific user and ticket', function () {
+test('gets user state for specific user and ticket', function () {
     $user = User::factory()->create();
     $ticket = Ticket::factory()->create();
 
-    // Create a notification record
-    $notificationRecord = $ticket->ticketNotifications()->create([
+    $userStateRecord = $ticket->ticketUserStates()->create([
         'user_id' => $user->getKey(),
         'created_at' => now()->subHour(),
     ]);
 
-    // Use the activity service to get the last notification
     $activityService = app(TicketActivityService::class);
-    $lastNotification = $activityService->getLastNotification($ticket, $user);
+    $userState = $activityService->getUserState($ticket, $user);
 
-    expect($lastNotification)
+    expect($userState)
         ->not->toBeNull()
-        ->id->toBe($notificationRecord->id)
+        ->id->toBe($userStateRecord->id)
         ->user_id->toBe($user->getKey());
 });

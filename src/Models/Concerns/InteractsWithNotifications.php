@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
-use Padmission\Tickets\Models\TicketNotification;
+use Padmission\Tickets\Models\TicketUserState;
 use Padmission\Tickets\TicketPlugin;
 
 trait InteractsWithNotifications
@@ -45,18 +45,23 @@ trait InteractsWithNotifications
         return $relation;
     }
 
-    public function ticketNotifications(): HasMany
+    public function ticketUserStates(): HasMany
     {
         $relation = $this->hasMany(
-            TicketPlugin::resolveModelClass(TicketNotification::class),
+            TicketPlugin::resolveModelClass(TicketUserState::class),
             'ticket_id'
         );
 
         $modifier = TicketPlugin::get()->getRelationshipScopeModifier();
         if ($modifier) {
-            $relation = app()->call($modifier, ['relation' => $relation, 'model' => 'ticketNotifications']);
+            $relation = app()->call($modifier, ['relation' => $relation, 'model' => 'ticketUserStates']);
         }
 
         return $relation;
+    }
+
+    public function ticketNotifications(): HasMany
+    {
+        return $this->ticketUserStates();
     }
 }

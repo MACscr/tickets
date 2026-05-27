@@ -94,22 +94,55 @@ class TicketActivity extends Model
         return Attribute::get(fn ($value) => match ($this->type) {
             ActivityType::Opened => __('padmission-tickets::activities.opened'),
             ActivityType::Closed => __('padmission-tickets::activities.closed'),
-            ActivityType::AssigneeChanged => filled($this->data['to'])
-                ? __('padmission-tickets::activities.assigned_to', ['name' => resolve(GetUserDisplayName::class)($this->data['to'])])
+            ActivityType::AssigneeChanged => filled($this->activityData('to'))
+                ? __('padmission-tickets::activities.assigned_to', ['name' => resolve(GetUserDisplayName::class)($this->activityData('to'))])
                 : __('padmission-tickets::activities.unassigned'),
             ActivityType::TurnChanged => __('padmission-tickets::activities.turn_changed', [
-                'from' => Turn::tryFrom($this->data['from'])->getLabel(),
-                'to' => Turn::tryFrom($this->data['to'])->getLabel(),
+                'from' => $this->turnLabel($this->activityData('from')),
+                'to' => $this->turnLabel($this->activityData('to')),
             ]),
             ActivityType::StatusChanged => __('padmission-tickets::activities.status_changed', [
-                'from' => TicketStatus::withoutGlobalScope(CurrentPanelScope::class)->find($this->data['from'])->display_name,
-                'to' => TicketStatus::withoutGlobalScope(CurrentPanelScope::class)->find($this->data['to'])->display_name,
+                'from' => $this->statusLabel($this->activityData('from')),
+                'to' => $this->statusLabel($this->activityData('to')),
             ]),
             ActivityType::PriorityChanged => __('padmission-tickets::activities.priority_changed', [
-                'from' => TicketPriority::withoutGlobalScope(CurrentPanelScope::class)->find($this->data['from'])->display_name,
-                'to' => TicketPriority::withoutGlobalScope(CurrentPanelScope::class)->find($this->data['to'])->display_name,
+                'from' => $this->priorityLabel($this->activityData('from')),
+                'to' => $this->priorityLabel($this->activityData('to')),
             ]),
             default => $value
         });
+    }
+
+    protected function activityData(string $key): mixed
+    {
+        return data_get($this->data ?? [], $key);
+    }
+
+    protected function turnLabel(mixed $value): string
+    {
+        if (! is_string($value)) {
+            return $this->unknownLabel();
+        }
+
+        return Turn::tryFrom($value)?->getLabel() ?? $this->unknownLabel();
+    }
+
+    protected function statusLabel(mixed $id): string
+    {
+        return TicketStatus::withoutGlobalScope(CurrentPanelScope::class)
+            ->find($id)
+            ?->display_name ?? $this->unknownLabel();
+    }
+
+    protected function priorityLabel(mixed $id): string
+    {
+        return TicketPriority::withoutGlobalScope(CurrentPanelScope::class)
+            ->find($id)
+            ?->display_name ?? $this->unknownLabel();
+    }
+
+    protected function unknownLabel(): string
+    {
+        return __('padmission-tickets::activities.unknown');
     }
 }
