@@ -15,41 +15,35 @@
         }
     </style>
 
+    <div class="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3 dark:border-white/10 dark:bg-gray-900">
+        <div class="flex items-center gap-1">
+            @foreach (['open', 'closed', 'all'] as $ticketFilter)
+                <button
+                    type="button"
+                    wire:key="ticket-filter-{{ $ticketFilter }}"
+                    wire:click="setFilter('{{ $ticketFilter }}')"
+                    @class([
+                        'inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors',
+                        'bg-primary-50 text-primary-700 dark:bg-primary-500/10 dark:text-primary-300' => $filter === $ticketFilter,
+                        'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200' => $filter !== $ticketFilter,
+                    ])
+                >
+                    {{ __("padmission-tickets::tickets.copilot.filters.{$ticketFilter}") }}
+                </button>
+            @endforeach
+        </div>
+
+        <button
+            type="button"
+            wire:click="showCreateForm"
+            class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-primary-500"
+        >
+            <x-filament::icon icon="heroicon-o-plus" class="h-4 w-4" />
+            {{ __('padmission-tickets::tickets.copilot.new_ticket') }}
+        </button>
+    </div>
+
     @if ($view === 'list')
-        <div class="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-6 py-4 dark:border-white/10">
-            <div>
-                <h3 class="text-sm font-semibold text-gray-950 dark:text-white">
-                    {{ __('padmission-tickets::tickets.copilot.title') }}
-                </h3>
-                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ __('padmission-tickets::tickets.copilot.subtitle') }}
-                </p>
-            </div>
-
-            <button
-                type="button"
-                wire:click="showCreateForm"
-                class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-primary-500"
-            >
-                <x-filament::icon icon="heroicon-o-plus" class="h-4 w-4" />
-                {{ __('padmission-tickets::tickets.copilot.new_ticket') }}
-            </button>
-        </div>
-
-        <div class="shrink-0 border-b border-gray-200 px-6 py-3 dark:border-white/10">
-            <x-filament::tabs>
-                @foreach (['open', 'closed', 'all'] as $ticketFilter)
-                    <x-filament::tabs.item
-                        wire:key="ticket-filter-{{ $ticketFilter }}"
-                        wire:click="setFilter('{{ $ticketFilter }}')"
-                        :active="$filter === $ticketFilter"
-                    >
-                        {{ __("padmission-tickets::tickets.copilot.filters.{$ticketFilter}") }}
-                    </x-filament::tabs.item>
-                @endforeach
-            </x-filament::tabs>
-        </div>
-
         <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
             @if ($tickets->isEmpty())
                 <div class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">

@@ -47,7 +47,7 @@ return [
     'copilot' => [
         'title' => 'Support tickets',
         'subtitle' => 'Create and follow up on support requests.',
-        'new_ticket' => 'New ticket',
+        'new_ticket' => 'New Ticket',
         'empty_title' => 'No tickets found',
         'empty_body' => 'Create a ticket when you need help from support.',
         'create_title' => 'New support ticket',
