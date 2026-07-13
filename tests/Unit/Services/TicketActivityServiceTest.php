@@ -100,11 +100,6 @@ test('respects max events configuration', function () {
         ]);
     }
 
-<<<<<<< HEAD
-    $notification = new Padmission\Tickets\Notifications\TicketNotification($ticket, 'history');
-
-=======
->>>>>>> origin/main
     // Use the activity service to get unread activities
     $activityService = app(TicketActivityService::class);
     $activities = $activityService->getUnreadActivities($ticket, $user, 2);
@@ -116,13 +111,6 @@ test('respects max events configuration', function () {
 test('returns null when user has no previous last seen for ticket', function () {
     $user = User::factory()->create();
     $ticket = Ticket::factory()->create();
-<<<<<<< HEAD
-    $notification = new Padmission\Tickets\Notifications\TicketNotification($ticket, 'history');
-=======
->>>>>>> origin/main
-
-    // Use the activity service to get the last seen
-    $activityService = app(TicketActivityService::class);
     $lastSeen = $activityService->getLastSeen($ticket, $user);
 
     expect($lastSeen)->toBeNull();

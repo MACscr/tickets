@@ -31,19 +31,11 @@ test('it resolves custom notification job class when configured', function () {
 });
 
 test('notification job has extensible methods', function () {
-<<<<<<< HEAD
-    $job = new NotificationJob(
-        User::factory()->create(),
-        Ticket::factory()->create(),
-        'test'
-    );
-=======
     $user = User::factory()->create();
     $ticket = Ticket::factory()->create();
     $event = new TicketCreatedEvent($ticket);
 
     $job = new NotificationJob($user, $ticket, $event);
->>>>>>> origin/main
 
     // Test that protected methods exist and are accessible to child classes
     $reflection = new ReflectionClass($job);
