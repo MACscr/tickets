@@ -3,35 +3,72 @@
 namespace Padmission\Tickets\Services;
 
 use Illuminate\Support\Collection;
+use Padmission\Tickets\Enums\ActivitySender;
+use Padmission\Tickets\Enums\ActivitySide;
 use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Models\Ticket;
+use Padmission\Tickets\Models\TicketActivity;
 use Padmission\Tickets\Models\TicketUserState;
 
 class TicketActivityService
 {
-    /**
-     * Get unread activities for a ticket within the specified time range
-     */
-    public function getUnreadActivities(
+    public function getActivities(
         Ticket $ticket,
-        $notifiable,
-        int $maxEvents,
-        int $maxDays
+        ?int $offsetId = null,
+        ?int $limit = null,
     ): Collection {
-        $userState = $this->getUserState($ticket, $notifiable);
+        $currentSender = auth()->id() === $ticket->submitter_id
+            ? ActivitySender::User
+            : ActivitySender::Supporter;
 
         return $ticket
             ->ticketActivities()
             ->with('user')
-            ->where('created_at', '>', now()->subDays($maxDays))
-            ->where('created_at', '<=', now())
-            ->where('type', '!=', ActivityType::TurnChanged)
-            ->when($userState?->last_notified_activity_id, function ($query, int|string $lastNotifiedActivityId) {
-                $query->where('id', '>', $lastNotifiedActivityId);
-            })
-            ->orderBy('created_at', 'asc')
-            ->limit($maxEvents)
-            ->get();
+            ->whereIn('type', $this->getActivityTypesForSender($ticket, $currentSender))
+            ->when($offsetId, fn ($query) => $query->where('id', '>', $offsetId))
+            ->when($limit, fn ($query) => $query->limit($limit))
+            ->orderBy('id', 'desc')
+            ->get()
+            ->map(function (TicketActivity $message) use ($currentSender) {
+                $message->side = match (true) {
+                    $message->sender === ActivitySender::System => ActivitySide::System,
+                    $message->sender === $currentSender => ActivitySide::Me,
+                    default => ActivitySide::Other,
+                };
+
+                return $message;
+            });
+
+    }
+
+    public function getUnreadActivities(
+        Ticket $ticket,
+        $notifiable,
+        int $maxEvents
+    ): Collection {
+        $userState = $this->getUserState($ticket, $notifiable);
+        $offsetId = max($userState?->last_notified_activity_id, $userState?->last_seen_activity_id, 0);
+
+        return $this->getActivities($ticket, $offsetId, $maxEvents + 1)->reverse();
+    }
+
+    public function getActivityTypesForSender(Ticket $ticket, $currentSender): array
+    {
+        if (
+            $currentSender === ActivitySender::Supporter
+            && auth()->user()?->can('manage', $ticket)
+        ) {
+            return array_filter(
+                ActivityType::cases(),
+                fn (ActivityType $type) => $type !== ActivityType::TurnChanged
+            );
+        }
+
+        return [
+            ActivityType::Opened,
+            ActivityType::Message,
+            ActivityType::Closed,
+        ];
     }
 
     public function getUserState(Ticket $ticket, $notifiable): ?TicketUserState
@@ -40,58 +77,34 @@ class TicketActivityService
         $userState = $ticket
             ->ticketUserStates()
             ->where('user_id', $notifiable->getKey())
-            ->latest()
             ->first();
 
         return $userState;
     }
 
-    public function markActivitiesNotified(Ticket $ticket, $notifiable, ?int $lastNotifiedActivityId = null): void
+    public function markAsSeen(Ticket $ticket, $notifiable, int $activityId): void
     {
-        $userState = $this->getUserState($ticket, $notifiable);
-
-        if ($userState) {
-            if ($lastNotifiedActivityId) {
-                $userState->last_notified_activity_id = $lastNotifiedActivityId;
-                $userState->save();
-
-                return;
-            }
-
-            $userState->touch();
-
-            return;
-        }
-
-        $values = [];
-
-        if ($lastNotifiedActivityId) {
-            $values['last_notified_activity_id'] = $lastNotifiedActivityId;
-        }
-
-        $ticket->ticketUserStates()->create([
-            'user_id' => $notifiable->getKey(),
-            ...$values,
-        ]);
+        $ticket->ticketUserStates()->updateOrCreate(
+            [
+                'user_id' => $notifiable->getKey(),
+                'ticket_id' => $ticket->id,
+            ],
+            [
+                'last_seen_activity_id' => $activityId,
+            ]
+        );
     }
 
-    public function getLastNotification(Ticket $ticket, $notifiable): ?TicketUserState
+    public function markAsSent(Ticket $ticket, $notifiable, int $activityId): void
     {
-        return $this->getUserState($ticket, $notifiable);
-    }
-
-    public function markNotificationUpdated(Ticket $ticket, $notifiable): void
-    {
-        $lastNotifiedActivityId = $ticket
-            ->ticketActivities()
-            ->where('type', '!=', ActivityType::TurnChanged)
-            ->latest('id')
-            ->value('id');
-
-        if (is_numeric($lastNotifiedActivityId)) {
-            $this->markActivitiesNotified($ticket, $notifiable, (int) $lastNotifiedActivityId);
-        } else {
-            $this->markActivitiesNotified($ticket, $notifiable);
-        }
+        $ticket->ticketUserStates()->updateOrCreate(
+            [
+                'user_id' => $notifiable->getKey(),
+                'ticket_id' => $ticket->id,
+            ],
+            [
+                'last_notified_activity_id' => $activityId,
+            ]
+        );
     }
 }

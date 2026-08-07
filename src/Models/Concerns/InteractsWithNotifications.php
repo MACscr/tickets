@@ -64,4 +64,19 @@ trait InteractsWithNotifications
     {
         return $this->ticketUserStates();
     }
+
+    public function hasUnreadMessagesFor(Authenticatable $user): bool
+    {
+        $userState = $this->ticketUserStates()
+            ->where('user_id', $user->getAuthIdentifier())
+            ->first();
+
+        if (! $userState || ! $userState->last_seen_activity_id) {
+            return $this->ticketActivities()->exists();
+        }
+
+        return $this->ticketActivities()
+            ->where('id', '>', $userState->last_seen_activity_id)
+            ->exists();
+    }
 }

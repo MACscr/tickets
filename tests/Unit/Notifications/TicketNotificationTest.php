@@ -1,24 +1,17 @@
 <?php
 
+use Padmission\Tickets\Enums\ActivityType;
+use Padmission\Tickets\Events\TicketActivityEvent;
+use Padmission\Tickets\Events\TicketCreatedEvent;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
 use Padmission\Tickets\Models\TicketUserState;
 use Padmission\Tickets\Notifications\TicketNotification;
-use Padmission\Tickets\Services\EmailLogoService;
-use Padmission\Tickets\Services\EmailStyleService;
-use Padmission\Tickets\Services\TicketActivityService;
-use Padmission\Tickets\Services\TicketUrlService;
 use Padmission\Tickets\Tests\User;
 
 beforeEach(function () {
     $this->ticket = Ticket::factory()->create(['subject' => 'Test Ticket']);
     $this->user = User::factory()->create();
-
-    // Mock services
-    $this->activityService = new TicketActivityService;
-    $this->logoService = new EmailLogoService;
-    $this->styleService = new EmailStyleService;
-    $this->urlService = new TicketUrlService;
 });
 
 afterEach(function () {
@@ -27,7 +20,8 @@ afterEach(function () {
 
 test('notification can be instantiated', function () {
     $ticket = Ticket::factory()->create();
-    $notification = new TicketNotification($ticket, 'history');
+    $event = new TicketCreatedEvent($ticket);
+    $notification = new TicketNotification($ticket, $event);
 
     expect($notification)->toBeInstanceOf(TicketNotification::class);
 });
@@ -38,7 +32,14 @@ test('notification returns correct email subject', function () {
         'subject' => 'Test Subject',
         'id' => 123,
     ]);
-    $notification = new TicketNotification($ticket, 'created');
+    $event = new TicketCreatedEvent($ticket);
+    $notification = new TicketNotification($ticket, $event);
+
+    // Create an activity so the notification has content
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'content' => 'Test activity',
+    ]);
 
     $mailMessage = $notification->toMail($user);
 
@@ -52,7 +53,16 @@ test('respects debounce time window', function () {
 
     $user = User::factory()->create();
     $ticket = Ticket::factory()->create();
-    $notification = new TicketNotification($ticket, 'history');
+
+    // Create initial activity
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'content' => 'Initial activity',
+        'created_at' => now(),
+    ]);
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message);
+    $notification = new TicketNotification($ticket, $event);
 
     // Send first notification
     $firstMail = $notification->toMail($user);
@@ -75,7 +85,8 @@ test('respects debounce time window', function () {
     ]);
 
     // Create a NEW notification instance to avoid memoization issues
-    $secondNotification = new TicketNotification($ticket, 'history');
+    $secondEvent = new TicketActivityEvent($ticket, ActivityType::Message);
+    $secondNotification = new TicketNotification($ticket, $secondEvent);
 
     // Send another notification (simulating debounce behavior)
     $secondMail = $secondNotification->toMail($user);
@@ -100,7 +111,15 @@ test('notifications are isolated per user', function () {
     $user2 = User::factory()->create();
     $ticket = Ticket::factory()->create();
 
-    $notification = new TicketNotification($ticket, 'history');
+    // Create an activity so notification has something to track
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'content' => 'Test activity',
+        'created_at' => now(),
+    ]);
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message);
+    $notification = new TicketNotification($ticket, $event);
 
     // Send notification to user1
     $notification->toMail($user1);
@@ -133,7 +152,8 @@ test('notification sending records the last notified activity without changing l
         'last_seen_activity_id' => $seenActivity->id,
     ]);
 
-    (new TicketNotification($ticket, 'history'))->toMail($user);
+    $event = new TicketActivityEvent($ticket, ActivityType::Message);
+    (new TicketNotification($ticket, $event))->toMail($user);
 
     $state = $ticket->ticketUserStates()->where('user_id', $user->id)->first();
 
@@ -143,14 +163,8 @@ test('notification sending records the last notified activity without changing l
 });
 
 test('generates correct email subject for different types', function () {
-    $notification = new TicketNotification(
-        $this->ticket,
-        'created',
-        $this->activityService,
-        $this->logoService,
-        $this->styleService,
-        $this->urlService
-    );
+    $event = new TicketCreatedEvent($this->ticket);
+    $notification = new TicketNotification($this->ticket, $event);
 
     $subject = invade($notification)->getEmailSubject();
 

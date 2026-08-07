@@ -2,23 +2,13 @@
 
 use App\Models\Tenant;
 use App\Models\User;
+use Carbon\CarbonInterval;
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Support\Facades\Config;
 use Padmission\Tickets\Enums\NotificationStrategy;
-use Padmission\Tickets\Events\TicketActivityEvent;
-use Padmission\Tickets\Events\TicketAssignedEvent;
-use Padmission\Tickets\Events\TicketClosedEvent;
-use Padmission\Tickets\Events\TicketCreatedEvent;
+use Padmission\Tickets\Events;
 use Padmission\Tickets\Jobs\NotificationJob;
-use Padmission\Tickets\Listeners\TicketNotificationListener;
-use Padmission\Tickets\Models\Ticket;
-use Padmission\Tickets\Models\TicketActivity;
-use Padmission\Tickets\Models\TicketAttachment;
-use Padmission\Tickets\Models\TicketDisposition;
-use Padmission\Tickets\Models\TicketNotification;
-use Padmission\Tickets\Models\TicketPriority;
-use Padmission\Tickets\Models\TicketStatus;
-use Padmission\Tickets\Models\TicketUserState;
+use Padmission\Tickets\Models;
+use Padmission\Tickets\Notifications;
 
 return [
     'run_migrations' => true,
@@ -32,14 +22,14 @@ return [
      */
     'models' => [
         Authenticatable::class => User::class,
-        Ticket::class => Ticket::class,
-        TicketActivity::class => TicketActivity::class,
-        TicketAttachment::class => TicketAttachment::class,
-        TicketDisposition::class => TicketDisposition::class,
-        TicketNotification::class => TicketUserState::class,
-        TicketPriority::class => TicketPriority::class,
-        TicketStatus::class => TicketStatus::class,
-        TicketUserState::class => TicketUserState::class,
+        Models\Ticket::class => Models\Ticket::class,
+        Models\TicketActivity::class => Models\TicketActivity::class,
+        Models\TicketAttachment::class => Models\TicketAttachment::class,
+        Models\TicketDisposition::class => Models\TicketDisposition::class,
+        Models\TicketNotification::class => Models\TicketUserState::class,
+        Models\TicketPriority::class => Models\TicketPriority::class,
+        Models\TicketStatus::class => Models\TicketStatus::class,
+        Models\TicketUserState::class => Models\TicketUserState::class,
     ],
 
     /**
@@ -84,31 +74,16 @@ return [
         'disk' => env('MEDIA_DISK', 's3'),
     ],
 
-    'event-listeners' => [
-        TicketActivityEvent::class => [
-            TicketNotificationListener::class,
-        ],
-        TicketAssignedEvent::class => [
-            TicketNotificationListener::class,
-        ],
-        TicketClosedEvent::class => [
-            TicketNotificationListener::class,
-        ],
-        TicketCreatedEvent::class => [
-            TicketNotificationListener::class,
-        ],
-    ],
-
     /**
      * Notification configuration
      *
      * @var array<string, class-string|null>
      */
     'notifications' => [
-        'activity' => Padmission\Tickets\Notifications\TicketNotification::class,
-        'assigned' => Padmission\Tickets\Notifications\TicketNotification::class,
-        'closed' => Padmission\Tickets\Notifications\TicketNotification::class,
-        'created' => Padmission\Tickets\Notifications\TicketNotification::class,
+        Events\TicketCreatedEvent::class => Notifications\TicketNotification::class,
+        Events\TicketActivityEvent::class => Notifications\TicketNotification::class,
+        Events\TicketAssignedEvent::class => Notifications\TicketNotification::class,
+        Events\TicketClosedEvent::class => Notifications\TicketNotification::class,
     ],
 
     /**
@@ -124,14 +99,7 @@ return [
      *
      * @var int
      */
-    'notification-debounce' => 300,
-
-    /**
-     * Maximum days to look back for activities in notification emails
-     *
-     * @var int
-     */
-    'notification-max-days' => 10,
+    'notification-debounce' => CarbonInterval::minutes(10)->totalSeconds,
 
     /**
      * Maximum number of activities to include in a single notification
@@ -139,11 +107,4 @@ return [
      * @var int
      */
     'notification-max-events' => 10,
-
-    /**
-     * Cache TTL for notification job deduplication (seconds)
-     *
-     * @var int
-     */
-    'notification-cache-ttl' => 300,
 ];

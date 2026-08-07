@@ -4,7 +4,6 @@ use Illuminate\Support\Facades\Config;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
 use Padmission\Tickets\Models\TicketUserState;
-use Padmission\Tickets\Notifications\TicketNotification;
 use Padmission\Tickets\Services\TicketActivityService;
 use Padmission\Tickets\Tests\User;
 
@@ -14,54 +13,54 @@ beforeEach(function () {
     $this->user = User::factory()->create();
 });
 
-test('can get unread activities within date range', function () {
-    // Create an old activity (should be excluded)
+test('can get unread activities', function () {
+    // Create an old activity
     TicketActivity::factory()->create([
         'ticket_id' => $this->ticket->id,
         'created_at' => now()->subDays(15),
     ]);
 
-    // Create a new activity (should be included)
+    // Create a new activity
     $newActivity = TicketActivity::factory()->create([
         'ticket_id' => $this->ticket->id,
         'created_at' => now()->subDays(2),
     ]);
 
-    $activities = $this->service->getUnreadActivities($this->ticket, $this->user, 10, 7);
+    $activities = $this->service->getUnreadActivities($this->ticket, $this->user, 10);
 
-    expect($activities)->toHaveCount(1);
-    expect($activities->first()->id)->toBe($newActivity->id);
+    expect($activities)->toHaveCount(2);
+    expect($activities->last()->id)->toBe($newActivity->id);
 });
 
-test('can get unread activities within date range with latest notification state', function () {
+test('can get unread activities after last notified activity', function () {
     $oldActivity = TicketActivity::factory()->create([
         'ticket_id' => $this->ticket->id,
         'created_at' => now()->subDays(4),
-    ]);
-
-    $newActivity = TicketActivity::factory()->create([
-        'ticket_id' => $this->ticket->id,
-        'created_at' => now()->subDays(2),
     ]);
 
     TicketUserState::factory()->create([
         'user_id' => $this->user->id,
         'ticket_id' => $this->ticket->id,
         'last_notified_activity_id' => $oldActivity->id,
-        'updated_at' => now(),
     ]);
 
-    $activities = $this->service->getUnreadActivities($this->ticket, $this->user, 10, 7);
+    // Create a new activity (should be included - after the last notified activity)
+    $newActivity = TicketActivity::factory()->create([
+        'ticket_id' => $this->ticket->id,
+        'created_at' => now()->subDays(2),
+    ]);
+
+    $activities = $this->service->getUnreadActivities($this->ticket, $this->user, 10);
 
     expect($activities)->toHaveCount(1);
     expect($activities->first()->id)->toBe($newActivity->id);
 });
 
-test('can get user state for user and ticket', function () {
+test('can get last seen for user and ticket', function () {
     $userB = User::factory()->create();
     $ticketB = Ticket::factory()->create();
 
-    $notification = TicketUserState::factory()->create([
+    $lastSeen = TicketUserState::factory()->create([
         'ticket_id' => $this->ticket->id,
         'user_id' => $this->user->id,
     ]);
@@ -76,16 +75,16 @@ test('can get user state for user and ticket', function () {
         'user_id' => $this->user->id,
     ]);
 
-    $userState = $this->service->getUserState($this->ticket, $this->user);
+    $result = $this->service->getUserState($this->ticket, $this->user);
 
-    expect($userState)->not->toBeNull();
-    expect($userState->id)->toBe($notification->id);
+    expect($result)->not->toBeNull();
+    expect($result->id)->toBe($lastSeen->id);
 });
 
-test('returns null when no user state exists', function () {
-    $userState = $this->service->getUserState($this->ticket, $this->user);
+test('returns null when no last seen exists', function () {
+    $lastSeen = $this->service->getUserState($this->ticket, $this->user);
 
-    expect($userState)->toBeNull();
+    expect($lastSeen)->toBeNull();
 });
 
 test('respects max events configuration', function () {
@@ -101,40 +100,38 @@ test('respects max events configuration', function () {
         ]);
     }
 
-    $notification = new TicketNotification($ticket, 'history');
-
     // Use the activity service to get unread activities
     $activityService = app(TicketActivityService::class);
-    $activities = $activityService->getUnreadActivities($ticket, $user, 2, 7);
+    $activities = $activityService->getUnreadActivities($ticket, $user, 2);
 
-    expect($activities)->toHaveCount(2); // Should limit to 2
+    // Should return 3 activities (maxEvents + 1) to check if there are more
+    expect($activities)->toHaveCount(3);
 });
 
-test('returns null when user has no previous state for ticket', function () {
+test('returns null when user has no previous last seen for ticket', function () {
     $user = User::factory()->create();
     $ticket = Ticket::factory()->create();
-    $notification = new TicketNotification($ticket, 'history');
+    $lastSeen = $activityService->getUserState($ticket, $user);
 
-    $activityService = app(TicketActivityService::class);
-    $userState = $activityService->getUserState($ticket, $user);
-
-    expect($userState)->toBeNull();
+    expect($lastSeen)->toBeNull();
 });
 
-test('gets user state for specific user and ticket', function () {
+test('gets last seen for specific user and ticket', function () {
     $user = User::factory()->create();
     $ticket = Ticket::factory()->create();
 
-    $userStateRecord = $ticket->ticketUserStates()->create([
+    // Create a last seen record
+    $lastSeenRecord = $ticket->ticketUserStates()->create([
         'user_id' => $user->getKey(),
         'created_at' => now()->subHour(),
     ]);
 
+    // Use the activity service to get the last seen
     $activityService = app(TicketActivityService::class);
-    $userState = $activityService->getUserState($ticket, $user);
+    $lastSeen = $activityService->getUserState($ticket, $user);
 
-    expect($userState)
+    expect($lastSeen)
         ->not->toBeNull()
-        ->id->toBe($userStateRecord->id)
+        ->id->toBe($lastSeenRecord->id)
         ->user_id->toBe($user->getKey());
 });
