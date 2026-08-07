@@ -147,8 +147,8 @@ class CopilotTicketService
                     ->on("{$userStateTable}.ticket_id", '=', "{$activityTable}.ticket_id")
                     ->where("{$userStateTable}.user_id", '=', $user->getAuthIdentifier());
             })
-            ->where("{$activityTable}.type", ActivityType::Message->value)
-            ->where("{$activityTable}.sender", ActivitySender::Supporter->value)
+            ->where("{$activityTable}.type", ActivityType::Message->value) // @phpstan-ignore argument.type
+            ->where("{$activityTable}.sender", ActivitySender::Supporter->value) // @phpstan-ignore argument.type
             ->where(function ($query) use ($activityTable, $userStateTable): void {
                 $query
                     ->whereNull("{$userStateTable}.last_seen_activity_id")

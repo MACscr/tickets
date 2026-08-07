@@ -175,12 +175,8 @@ it('shows a link to the ticket in the users existing panel', function () {
             'subject' => 'Notification Test',
             'message' => tiptapDocument('Notification test message'),
         ])
-        ->assertHasNoFormErrors();
-
-    $notifications = session()->get('filament.notifications');
-
-    expect($notifications)->toHaveCount(1)
-        ->and($notifications[0]['actions'])->not->toBeEmpty();
+        ->assertHasNoFormErrors()
+        ->assertNotified();
 });
 
 it('requires subject field', function () {

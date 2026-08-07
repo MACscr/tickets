@@ -111,7 +111,7 @@ test('respects max events configuration', function () {
 test('returns null when user has no previous last seen for ticket', function () {
     $user = User::factory()->create();
     $ticket = Ticket::factory()->create();
-    $lastSeen = $activityService->getUserState($ticket, $user);
+    $lastSeen = app(TicketActivityService::class)->getUserState($ticket, $user);
 
     expect($lastSeen)->toBeNull();
 });
@@ -128,7 +128,7 @@ test('gets last seen for specific user and ticket', function () {
 
     // Use the activity service to get the last seen
     $activityService = app(TicketActivityService::class);
-    $lastSeen = $activityService->getUserState($ticket, $user);
+    $lastSeen = app(TicketActivityService::class)->getUserState($ticket, $user);
 
     expect($lastSeen)
         ->not->toBeNull()

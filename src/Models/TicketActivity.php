@@ -145,14 +145,14 @@ class TicketActivity extends Model
     {
         return TicketStatus::withoutGlobalScope(CurrentPanelScope::class)
             ->find($id)
-            ?->display_name ?? $this->unknownLabel();
+            ->display_name ?? $this->unknownLabel();
     }
 
     protected function priorityLabel(mixed $id): string
     {
         return TicketPriority::withoutGlobalScope(CurrentPanelScope::class)
             ->find($id)
-            ?->display_name ?? $this->unknownLabel();
+            ->display_name ?? $this->unknownLabel();
     }
 
     protected function unknownLabel(): string
