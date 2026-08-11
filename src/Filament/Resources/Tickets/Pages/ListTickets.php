@@ -30,7 +30,19 @@ class ListTickets extends ListRecords
 
     protected function getTableQuery(): ?Builder
     {
-        return TicketResource::scopeListQueryToSupporterOrSubmitter(parent::getTableQuery());
+        $query = parent::getTableQuery();
+
+        if ($this->activeTabIsInvalid()) {
+            $query->tap(new CurrentPanelScope);
+        }
+
+        return TicketResource::scopeListQueryToSupporterOrSubmitter($query);
+    }
+
+    protected function activeTabIsInvalid(): bool
+    {
+        return blank($this->activeTab)
+            || ! array_key_exists($this->activeTab, $this->getCachedTabs());
     }
 
     protected function getHeaderWidgets(): array

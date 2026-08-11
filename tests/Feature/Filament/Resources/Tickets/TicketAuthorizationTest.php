@@ -61,6 +61,41 @@ it('still scopes a non-supporter to their own tickets when an invalid tab is sup
         ->assertCanNotSeeTableRecords([$foreign->id]);
 });
 
+it('does not leak another panel\'s tickets to a supporter on an invalid tab', function () {
+    (new TicketStatusSeeder)->run();
+
+    [$supporter, $submitterA, $submitterB] = User::factory()->count(3)->create();
+
+    $this->modifyPlugin(function ($plugin) use ($supporter) {
+        $plugin->allSupportersQuery(fn () => User::query()->whereKey($supporter->id));
+    });
+
+    $openStatusId = TicketStatus::getOpenStatuses()->first()->id;
+
+    $currentPanelTicket = Ticket::factory()->open()->create([
+        'panel' => 'test',
+        'submitter_id' => $submitterA->id,
+        'status_id' => $openStatusId,
+    ]);
+
+    $otherPanelTicket = Ticket::factory()->open()->create([
+        'panel' => 'test2',
+        'submitter_id' => $submitterB->id,
+        'status_id' => $openStatusId,
+    ]);
+
+    $this->actingAs($supporter);
+
+    Livewire::test(ListTickets::class, ['activeTab' => 'bogus'])
+        ->assertCanSeeTableRecords([$currentPanelTicket->id])
+        ->assertCanNotSeeTableRecords([$otherPanelTicket->id]);
+
+    Livewire::test(ListTickets::class)
+        ->set('activeTab', 'does-not-exist')
+        ->assertCanSeeTableRecords([$currentPanelTicket->id])
+        ->assertCanNotSeeTableRecords([$otherPanelTicket->id]);
+});
+
 it('does not delete a ticket the user is not authorized to delete', function () {
     (new TicketStatusSeeder)->run();
 
