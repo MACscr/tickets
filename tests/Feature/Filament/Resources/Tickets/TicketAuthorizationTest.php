@@ -35,6 +35,77 @@ it('scopes the list query to own submitted tickets for a non-supporter', functio
         ->assertCanNotSeeTableRecords([$foreign->id]);
 });
 
+it('still scopes a non-supporter to their own tickets when an invalid tab is supplied', function () {
+    (new TicketStatusSeeder)->run();
+
+    [$outsider, $supporter, $stranger] = User::factory()->count(3)->create();
+
+    $this->modifyPlugin(function ($plugin) use ($supporter) {
+        $plugin->allSupportersQuery(fn () => User::query()->whereKey($supporter->id));
+    });
+
+    $openStatusId = TicketStatus::getOpenStatuses()->first()->id;
+
+    $own = Ticket::factory()->open()->create(['submitter_id' => $outsider->id, 'status_id' => $openStatusId]);
+    $foreign = Ticket::factory()->open()->create(['submitter_id' => $stranger->id, 'status_id' => $openStatusId]);
+
+    $this->actingAs($outsider);
+
+    Livewire::test(ListTickets::class, ['activeTab' => 'bogus'])
+        ->assertCanSeeTableRecords([$own->id])
+        ->assertCanNotSeeTableRecords([$foreign->id]);
+
+    Livewire::test(ListTickets::class)
+        ->set('activeTab', 'does-not-exist')
+        ->assertCanSeeTableRecords([$own->id])
+        ->assertCanNotSeeTableRecords([$foreign->id]);
+});
+
+it('does not delete a ticket the user is not authorized to delete', function () {
+    (new TicketStatusSeeder)->run();
+
+    [$outsider, $supporter, $stranger] = User::factory()->count(3)->create();
+
+    $this->modifyPlugin(function ($plugin) use ($supporter) {
+        $plugin->allSupportersQuery(fn () => User::query()->whereKey($supporter->id));
+    });
+
+    $openStatusId = TicketStatus::getOpenStatuses()->first()->id;
+
+    $own = Ticket::factory()->open()->create(['submitter_id' => $outsider->id, 'status_id' => $openStatusId]);
+    $foreign = Ticket::factory()->open()->create(['submitter_id' => $stranger->id, 'status_id' => $openStatusId]);
+
+    $this->actingAs($outsider);
+
+    Livewire::test(ListTickets::class, ['activeTab' => 'all'])
+        ->selectTableRecords([$own->id, $foreign->id])
+        ->callAction(TestAction::make('delete')->table()->bulk());
+
+    expect($foreign->fresh()->trashed())->toBeFalse();
+});
+
+it('deletes tickets for a genuine supporter', function () {
+    (new TicketStatusSeeder)->run();
+
+    [$submitter, $supporter] = User::factory()->count(2)->create();
+
+    $this->modifyPlugin(function ($plugin) use ($supporter) {
+        $plugin->allSupportersQuery(fn () => User::query()->whereKey($supporter->id));
+    });
+
+    $openStatusId = TicketStatus::getOpenStatuses()->first()->id;
+
+    $ticket = Ticket::factory()->open()->create(['submitter_id' => $submitter->id, 'status_id' => $openStatusId]);
+
+    $this->actingAs($supporter);
+
+    Livewire::test(ListTickets::class, ['activeTab' => 'all'])
+        ->selectTableRecords([$ticket->id])
+        ->callAction(TestAction::make('delete')->table()->bulk());
+
+    expect($ticket->fresh()->trashed())->toBeTrue();
+});
+
 it('lets a genuine supporter see every panel ticket in the list query', function () {
     (new TicketStatusSeeder)->run();
 

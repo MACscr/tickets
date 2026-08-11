@@ -28,6 +28,11 @@ class ListTickets extends ListRecords
         return 12;
     }
 
+    protected function getTableQuery(): ?Builder
+    {
+        return TicketResource::scopeListQueryToSupporterOrSubmitter(parent::getTableQuery());
+    }
+
     protected function getHeaderWidgets(): array
     {
         return [

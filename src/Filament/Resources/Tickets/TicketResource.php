@@ -273,7 +273,8 @@ class TicketResource extends Resource
                         })
                         ->successNotificationTitle(__('padmission-tickets::tickets.resources.tickets.assigned_successfully'))
                         ->deselectRecordsAfterCompletion(),
-                    DeleteBulkAction::make(),
+                    DeleteBulkAction::make()
+                        ->authorizeIndividualRecords('delete'),
                 ]),
             ]);
     }
