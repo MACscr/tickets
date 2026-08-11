@@ -4,6 +4,7 @@ namespace Padmission\Tickets\Services;
 
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Gate;
 use Padmission\Tickets\Enums\ActivitySender;
 use Padmission\Tickets\Enums\ActivitySide;
 use Padmission\Tickets\Enums\ActivityType;
@@ -17,15 +18,18 @@ class TicketActivityService
         Ticket $ticket,
         ?int $offsetId = null,
         ?int $limit = null,
+        $user = null,
     ): Collection {
-        $currentSender = auth()->id() === $ticket->submitter_id
+        $user ??= auth()->user();
+
+        $currentSender = $user?->getKey() === $ticket->submitter_id
             ? ActivitySender::User
             : ActivitySender::Supporter;
 
         return $ticket
             ->ticketActivities()
             ->with('user')
-            ->whereIn('type', $this->getActivityTypesForSender($ticket, $currentSender))
+            ->whereIn('type', $this->getActivityTypesForSender($ticket, $currentSender, $user))
             ->when($offsetId, fn ($query) => $query->where('id', '>', $offsetId))
             ->when($limit, fn ($query) => $query->limit($limit))
             ->orderBy('id', 'desc')
@@ -52,14 +56,17 @@ class TicketActivityService
         $userState = $this->getUserState($ticket, $notifiable);
         $offsetId = max($userState?->last_notified_activity_id, $userState?->last_seen_activity_id, 0);
 
-        return $this->getActivities($ticket, $offsetId, $maxEvents + 1);
+        return $this->getActivities($ticket, $offsetId, $maxEvents + 1, $notifiable);
     }
 
-    public function getActivityTypesForSender(Ticket $ticket, $currentSender): array
+    public function getActivityTypesForSender(Ticket $ticket, $currentSender, $user = null): array
     {
+        $user ??= auth()->user();
+
         if (
             $currentSender === ActivitySender::Supporter
-            && auth()->user()?->can('manage', $ticket)
+            && $user
+            && Gate::forUser($user)->allows('manage', $ticket)
         ) {
             return array_filter(
                 ActivityType::cases(),

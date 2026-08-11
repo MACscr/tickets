@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Enums\NotificationStrategy;
@@ -259,5 +260,24 @@ describe('NotificationJob Unit Tests', function () {
         expect($job1->uniqueId())->not->toBe($job2->uniqueId())
             ->and($job1->uniqueId())->not->toBe($job3->uniqueId())
             ->and($job2->uniqueId())->not->toBe($job3->uniqueId());
+    });
+});
+
+test('ticket created event is wired to the notification listener', function () {
+    expect(Event::hasListeners(TicketCreatedEvent::class))->toBeTrue();
+});
+
+test('ticket created event dispatches a notification job to the submitter', function () {
+    config(['padmission-tickets.default-notification-strategy' => NotificationStrategy::Immediate]);
+
+    $ticket = Ticket::factory()->open()->create();
+
+    Queue::fake();
+
+    event(new TicketCreatedEvent($ticket, $ticket->submitter));
+
+    Queue::assertPushed(NotificationJob::class, function (NotificationJob $job) use ($ticket) {
+        return $job->notificationType === 'created'
+            && $job->getUserId() === $ticket->submitter_id;
     });
 });

@@ -1,5 +1,8 @@
 <?php
 
+use Illuminate\Support\Facades\Queue;
+use Padmission\Tickets\Enums\ActivitySender;
+use Padmission\Tickets\Enums\ActivitySide;
 use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Events\TicketActivityEvent;
 use Padmission\Tickets\Events\TicketCreatedEvent;
@@ -171,4 +174,70 @@ test('generates correct email subject for different types', function () {
     // Should contain the ticket ID and subject
     expect($subject)->toContain((string) $this->ticket->id);
     expect($subject)->toContain('Test Ticket');
+});
+
+test('queued notification renders correct message sides for each recipient without auth', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => $supporter->id,
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'user_id' => $supporter->id,
+        'sender' => ActivitySender::Supporter,
+        'type' => ActivityType::Message,
+        'content' => 'Support reply',
+    ]);
+
+    expect(auth()->user())->toBeNull();
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message);
+
+    $submitterMail = (new TicketNotification($ticket, $event))->toMail($submitter);
+    $submitterActivity = $submitterMail->viewData['activities']->first();
+
+    expect($submitterActivity)
+        ->side->toBe(ActivitySide::Other)
+        ->userName->not->toBe(__('padmission-tickets::tickets.side_you'));
+
+    $supporterMail = (new TicketNotification($ticket, $event))->toMail($supporter);
+    $supporterActivity = $supporterMail->viewData['activities']->first();
+
+    expect($supporterActivity)
+        ->side->toBe(ActivitySide::Me)
+        ->userName->toBe(__('padmission-tickets::tickets.side_you'));
+});
+
+test('queued notification includes management activities for the supporter recipient without auth', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => $supporter->id,
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'sender' => ActivitySender::System,
+        'type' => ActivityType::StatusChanged,
+        'data' => ['from' => null, 'to' => null],
+    ]);
+
+    expect(auth()->user())->toBeNull();
+
+    $event = new TicketActivityEvent($ticket, ActivityType::StatusChanged);
+
+    expect((new TicketNotification($ticket, $event))->shouldSend($supporter))->toBeTrue();
+
+    $supporterMail = (new TicketNotification($ticket, $event))->toMail($supporter);
+
+    expect($supporterMail->viewData['activities']->pluck('type'))
+        ->toContain(ActivityType::StatusChanged);
+
+    expect((new TicketNotification($ticket, $event))->shouldSend($submitter))->toBeFalse();
 });

@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Config;
+use Padmission\Tickets\Enums\ActivitySender;
+use Padmission\Tickets\Enums\ActivitySide;
 use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
@@ -209,4 +211,80 @@ test('mark as seen does not clobber the notified pointer', function () {
     expect($this->service->getUserState($this->ticket, $this->user))
         ->last_notified_activity_id->toBe($notified->id)
         ->last_seen_activity_id->toBe($seen->id);
+});
+
+test('activities perspective comes from the provided user when no one is authenticated', function () {
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => $supporter->id,
+    ]);
+
+    $supporterMessage = TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'user_id' => $supporter->id,
+        'sender' => ActivitySender::Supporter,
+        'type' => ActivityType::Message,
+        'content' => 'Support reply',
+    ]);
+
+    expect(auth()->user())->toBeNull();
+
+    $forSubmitter = $this->service->getActivities($ticket, user: $submitter);
+    $forSupporter = $this->service->getActivities($ticket, user: $supporter);
+
+    expect($forSubmitter->firstWhere('id', $supporterMessage->id))
+        ->side->toBe(ActivitySide::Other)
+        ->userName->not->toBe(__('padmission-tickets::tickets.side_you'));
+
+    expect($forSupporter->firstWhere('id', $supporterMessage->id))
+        ->side->toBe(ActivitySide::Me)
+        ->userName->toBe(__('padmission-tickets::tickets.side_you'));
+});
+
+test('supporter perspective includes management activity types without auth while submitter does not', function () {
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => $supporter->id,
+    ]);
+
+    $statusChange = TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'sender' => ActivitySender::System,
+        'type' => ActivityType::StatusChanged,
+        'data' => ['from' => null, 'to' => null],
+    ]);
+
+    expect(auth()->user())->toBeNull();
+
+    expect($this->service->getActivities($ticket, user: $supporter)->pluck('id'))
+        ->toContain($statusChange->id);
+
+    expect($this->service->getActivities($ticket, user: $submitter)->pluck('id'))
+        ->not->toContain($statusChange->id);
+});
+
+test('unread activities use the notifiable perspective', function () {
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => $supporter->id,
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'user_id' => $supporter->id,
+        'sender' => ActivitySender::Supporter,
+        'type' => ActivityType::Message,
+        'content' => 'Support reply',
+    ]);
+
+    $activities = $this->service->getUnreadActivities($ticket, $submitter, 10);
+
+    expect($activities->first())
+        ->side->toBe(ActivitySide::Other);
 });
