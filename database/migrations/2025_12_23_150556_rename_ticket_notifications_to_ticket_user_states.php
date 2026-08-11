@@ -60,5 +60,30 @@ return new class extends Migration
                     )'),
                 ]);
         }
+
+        if (! $hasLastSeenActivityId) {
+            DB::table('ticket_user_states')
+                ->whereNull('last_seen_activity_id')
+                ->whereNotNull('last_notified_activity_id')
+                ->update([
+                    'last_seen_activity_id' => DB::raw('last_notified_activity_id'),
+                ]);
+
+            DB::table('ticket_user_states')
+                ->whereExists(function ($query): void {
+                    $query
+                        ->selectRaw('1')
+                        ->from('tickets')
+                        ->whereColumn('tickets.id', 'ticket_user_states.ticket_id')
+                        ->whereNotNull('tickets.closed_at');
+                })
+                ->update([
+                    'last_seen_activity_id' => DB::raw('(
+                        select max(ticket_activities.id)
+                        from ticket_activities
+                        where ticket_activities.ticket_id = ticket_user_states.ticket_id
+                    )'),
+                ]);
+        }
     }
 };

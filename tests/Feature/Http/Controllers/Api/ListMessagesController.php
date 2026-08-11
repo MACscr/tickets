@@ -107,3 +107,52 @@ it('lists messages with offset', function () {
 
     expect($json->messages)->toHaveCount(1);
 });
+
+it('returns messages in ascending chronological order', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    $ticket = Ticket::factory()->create(['submitter_id' => $user->id]);
+
+    $activities = TicketActivity::factory()
+        ->count(3)
+        ->create([
+            'ticket_id' => $ticket->id,
+            'type' => ActivityType::Message,
+        ]);
+
+    $resp = $this
+        ->getJson(route('padmission-tickets::api.messages.index', ['ticket' => $ticket]))
+        ->assertOk();
+
+    $ids = collect($resp->getData()->messages)->pluck('id')->all();
+
+    expect($ids)->toBe($activities->pluck('id')->sort()->values()->all());
+});
+
+it('returns only messages after the offset cursor in ascending order', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    $ticket = Ticket::factory()->create(['submitter_id' => $user->id]);
+
+    [$first, $second, $third] = TicketActivity::factory()
+        ->count(3)
+        ->create([
+            'ticket_id' => $ticket->id,
+            'type' => ActivityType::Message,
+        ]);
+
+    $resp = $this
+        ->getJson(route('padmission-tickets::api.messages.index', [
+            'ticket' => $ticket,
+            'offset' => $first->id,
+        ]))
+        ->assertOk();
+
+    $ids = collect($resp->getData()->messages)->pluck('id')->all();
+
+    expect($ids)->toBe([$second->id, $third->id]);
+});

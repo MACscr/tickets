@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
+use Padmission\Tickets\Enums\ActivitySender;
+use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Models\TicketUserState;
 use Padmission\Tickets\TicketPlugin;
 
@@ -71,12 +73,18 @@ trait InteractsWithNotifications
             ->where('user_id', $user->getAuthIdentifier())
             ->first();
 
-        if (! $userState || ! $userState->last_seen_activity_id) {
-            return $this->ticketActivities()->exists();
+        $unreadSender = (int) $user->getAuthIdentifier() === (int) $this->submitter_id
+            ? ActivitySender::Supporter
+            : ActivitySender::User;
+
+        $query = $this->ticketActivities()
+            ->where('type', ActivityType::Message->value)
+            ->where('sender', $unreadSender->value);
+
+        if ($userState?->last_seen_activity_id) {
+            $query->where('id', '>', $userState->last_seen_activity_id);
         }
 
-        return $this->ticketActivities()
-            ->where('id', '>', $userState->last_seen_activity_id)
-            ->exists();
+        return $query->exists();
     }
 }

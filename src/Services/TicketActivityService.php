@@ -2,6 +2,7 @@
 
 namespace Padmission\Tickets\Services;
 
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Padmission\Tickets\Enums\ActivitySender;
 use Padmission\Tickets\Enums\ActivitySide;
@@ -29,6 +30,8 @@ class TicketActivityService
             ->when($limit, fn ($query) => $query->limit($limit))
             ->orderBy('id', 'desc')
             ->get()
+            ->reverse()
+            ->values()
             ->map(function (TicketActivity $message) use ($currentSender) {
                 $message->side = match (true) {
                     $message->sender === ActivitySender::System => ActivitySide::System,
@@ -49,7 +52,7 @@ class TicketActivityService
         $userState = $this->getUserState($ticket, $notifiable);
         $offsetId = max($userState?->last_notified_activity_id, $userState?->last_seen_activity_id, 0);
 
-        return $this->getActivities($ticket, $offsetId, $maxEvents + 1)->reverse();
+        return $this->getActivities($ticket, $offsetId, $maxEvents + 1);
     }
 
     public function getActivityTypesForSender(Ticket $ticket, $currentSender): array
@@ -84,27 +87,39 @@ class TicketActivityService
 
     public function markAsSeen(Ticket $ticket, $notifiable, int $activityId): void
     {
-        $ticket->ticketUserStates()->updateOrCreate(
-            [
-                'user_id' => $notifiable->getKey(),
-                'ticket_id' => $ticket->id,
-            ],
-            [
-                'last_seen_activity_id' => $activityId,
-            ]
-        );
+        $this->advancePointer($ticket, $notifiable, 'last_seen_activity_id', $activityId);
     }
 
     public function markAsSent(Ticket $ticket, $notifiable, int $activityId): void
     {
-        $ticket->ticketUserStates()->updateOrCreate(
-            [
+        $this->advancePointer($ticket, $notifiable, 'last_notified_activity_id', $activityId);
+    }
+
+    protected function advancePointer(Ticket $ticket, $notifiable, string $column, int $activityId): void
+    {
+        $advanceExisting = fn (): int => $ticket
+            ->ticketUserStates()
+            ->where('user_id', $notifiable->getKey())
+            ->where(fn ($query) => $query
+                ->whereNull($column)
+                ->orWhere($column, '<', $activityId))
+            ->update([$column => $activityId]); // @phpstan-ignore argument.type
+
+        if ($advanceExisting() > 0) {
+            return;
+        }
+
+        if ($ticket->ticketUserStates()->where('user_id', $notifiable->getKey())->exists()) {
+            return;
+        }
+
+        try {
+            $ticket->ticketUserStates()->create([ // @phpstan-ignore argument.type
                 'user_id' => $notifiable->getKey(),
-                'ticket_id' => $ticket->id,
-            ],
-            [
-                'last_notified_activity_id' => $activityId,
-            ]
-        );
+                $column => $activityId,
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            $advanceExisting();
+        }
     }
 }

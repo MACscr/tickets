@@ -49,7 +49,8 @@ class CopilotTicketService
     {
         $query = TicketPlugin::get()
             ->getTicketQuery()
-            ->where('submitter_id', $user->getAuthIdentifier());
+            ->where('submitter_id', $user->getAuthIdentifier())
+            ->open();
 
         $this->withUnreadSupportResponseConstraint($query, $user);
 
@@ -90,10 +91,7 @@ class CopilotTicketService
             return;
         }
 
-        $ticket->ticketUserStates()->updateOrCreate(
-            ['user_id' => $user->getAuthIdentifier()],
-            ['last_seen_activity_id' => $latestSupportResponseId],
-        );
+        app(TicketActivityService::class)->markAsSeen($ticket, $user, $latestSupportResponseId);
     }
 
     public function resolveTicket(Authenticatable&Model $user, Ticket $ticket): void
@@ -110,7 +108,7 @@ class CopilotTicketService
         $ticket->close(closedById: (int) $user->getAuthIdentifier());
     }
 
-    protected function withUnreadSupportResponseConstraint(Builder $query, Authenticatable&Model $user): void
+    public function withUnreadSupportResponseConstraint(Builder $query, Authenticatable&Model $user): void
     {
         $ticketTable = $query->getModel()->getTable();
         $activityTable = (new (TicketPlugin::resolveModelClass(TicketActivity::class)))->getTable();

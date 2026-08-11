@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Config;
+use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
 use Padmission\Tickets\Models\TicketUserState;
@@ -134,4 +135,78 @@ test('gets last seen for specific user and ticket', function () {
         ->not->toBeNull()
         ->id->toBe($lastSeenRecord->id)
         ->user_id->toBe($user->getKey());
+});
+
+test('activities are returned in ascending chronological order', function () {
+    $this->actingAs($this->user);
+
+    $activities = TicketActivity::factory()->count(3)->create([
+        'ticket_id' => $this->ticket->id,
+        'type' => ActivityType::Message,
+    ]);
+
+    $result = $this->service->getActivities($this->ticket);
+
+    expect($result->pluck('id')->all())
+        ->toBe($activities->pluck('id')->sort()->values()->all());
+});
+
+test('a limited window returns the latest activities in ascending order', function () {
+    $this->actingAs($this->user);
+
+    $activities = TicketActivity::factory()->count(3)->create([
+        'ticket_id' => $this->ticket->id,
+        'type' => ActivityType::Message,
+    ]);
+
+    $result = $this->service->getActivities($this->ticket, limit: 2);
+
+    expect($result->pluck('id')->all())
+        ->toBe($activities->pluck('id')->sort()->values()->slice(1)->values()->all());
+});
+
+test('mark as seen creates a state row for first contact', function () {
+    $activity = TicketActivity::factory()->create(['ticket_id' => $this->ticket->id]);
+
+    $this->service->markAsSeen($this->ticket, $this->user, $activity->id);
+
+    expect($this->service->getUserState($this->ticket, $this->user))
+        ->last_seen_activity_id->toBe($activity->id);
+});
+
+test('mark as seen never moves the pointer backwards', function () {
+    [$older, $newer] = TicketActivity::factory()->count(2)->create([
+        'ticket_id' => $this->ticket->id,
+    ]);
+
+    $this->service->markAsSeen($this->ticket, $this->user, $newer->id);
+    $this->service->markAsSeen($this->ticket, $this->user, $older->id);
+
+    expect($this->service->getUserState($this->ticket, $this->user))
+        ->last_seen_activity_id->toBe($newer->id);
+});
+
+test('mark as sent never moves the pointer backwards', function () {
+    [$older, $newer] = TicketActivity::factory()->count(2)->create([
+        'ticket_id' => $this->ticket->id,
+    ]);
+
+    $this->service->markAsSent($this->ticket, $this->user, $newer->id);
+    $this->service->markAsSent($this->ticket, $this->user, $older->id);
+
+    expect($this->service->getUserState($this->ticket, $this->user))
+        ->last_notified_activity_id->toBe($newer->id);
+});
+
+test('mark as seen does not clobber the notified pointer', function () {
+    [$notified, $seen] = TicketActivity::factory()->count(2)->create([
+        'ticket_id' => $this->ticket->id,
+    ]);
+
+    $this->service->markAsSent($this->ticket, $this->user, $notified->id);
+    $this->service->markAsSeen($this->ticket, $this->user, $seen->id);
+
+    expect($this->service->getUserState($this->ticket, $this->user))
+        ->last_notified_activity_id->toBe($notified->id)
+        ->last_seen_activity_id->toBe($seen->id);
 });
