@@ -2,8 +2,8 @@
 
 namespace Padmission\Tickets\Policies;
 
-use Filament\Facades\Filament;
 use Padmission\Tickets\Models\Ticket;
+use Padmission\Tickets\TicketPlugin;
 
 class TicketPolicy
 {
@@ -18,9 +18,7 @@ class TicketPolicy
             return true;
         }
 
-        $panel = Filament::getPanel($ticket->panel);
-
-        return $user->canAccessPanel($panel);
+        return $this->isSupporter($user, $ticket);
     }
 
     public function create($user): bool
@@ -34,9 +32,7 @@ class TicketPolicy
             return false;
         }
 
-        $panel = Filament::getPanel($ticket->panel);
-
-        return $user->canAccessPanel($panel);
+        return $this->isSupporter($user, $ticket);
     }
 
     public function manage($user, Ticket $ticket): bool
@@ -45,9 +41,7 @@ class TicketPolicy
             return false;
         }
 
-        $panel = Filament::getPanel($ticket->panel);
-
-        return $user->canAccessPanel($panel);
+        return $this->isSupporter($user, $ticket);
     }
 
     public function escalate($user, Ticket $ticket): bool
@@ -61,8 +55,19 @@ class TicketPolicy
             return true;
         }
 
-        $panel = Filament::getPanel($ticket->panel);
+        return $this->isSupporter($user, $ticket);
+    }
 
-        return $user->canAccessPanel($panel);
+    private function isSupporter($user, Ticket $ticket): bool
+    {
+        $supportersQuery = TicketPlugin::get($ticket->panel)->getAllSupportersQuery();
+
+        if ($supportersQuery === null) {
+            return false;
+        }
+
+        return app()->call($supportersQuery)
+            ->whereKey($user->getAuthIdentifier())
+            ->exists();
     }
 }
