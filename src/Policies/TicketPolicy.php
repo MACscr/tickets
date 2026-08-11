@@ -9,6 +9,9 @@ class TicketPolicy
 {
     public function viewAny($user): bool
     {
+        // The resource is visible to any authenticated panel entrant, but the row set is
+        // scoped in TicketResource::getEloquentQuery(): non-supporters only ever see the
+        // tickets they submitted, while genuine supporters see the whole panel query.
         return true;
     }
 

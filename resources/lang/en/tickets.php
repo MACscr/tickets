@@ -100,6 +100,7 @@ return [
             'assign_to_supporter' => 'Assign to Supporter',
             'assigned_successfully' => 'Tickets assigned successfully',
             'invalid_assignee' => 'Invalid assignee selected',
+            'unauthorized_assignment' => 'Some tickets were skipped because you are not authorized to manage them',
 
             'tabs' => [
                 'all' => 'All Tickets',

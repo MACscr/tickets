@@ -18,6 +18,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Gate;
 use Padmission\Tickets\Enums\Turn;
 use Padmission\Tickets\Filament\Resources\Concerns\HasResourceConfiguration;
 use Padmission\Tickets\Filament\Resources\Tickets\Pages\ListTickets;
@@ -63,6 +64,40 @@ class TicketResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return TicketPlugin::get()->getTicketQuery();
+    }
+
+    /**
+     * Scope a list query so a non-supporter only ever sees tickets they submitted,
+     * while a genuine supporter (per the panel's allSupportersQuery) sees everything.
+     * Record-level access is enforced separately by the ticket policy's view() method,
+     * so this lives on the collection surface only.
+     */
+    public static function scopeListQueryToSupporterOrSubmitter(Builder $query): Builder
+    {
+        $userId = auth()->id();
+
+        if ($userId === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if (static::currentUserIsSupporter($userId)) {
+            return $query;
+        }
+
+        return $query->where($query->getModel()->qualifyColumn('submitter_id'), $userId);
+    }
+
+    protected static function currentUserIsSupporter(int|string $userId): bool
+    {
+        $supportersQuery = TicketPlugin::get()->getAllSupportersQuery();
+
+        if ($supportersQuery === null) {
+            return false;
+        }
+
+        return app()->call($supportersQuery)
+            ->whereKey($userId)
+            ->exists();
     }
 
     public static function getWidgets(): array
@@ -223,7 +258,16 @@ class TicketResource extends Resource
                                 }
                             }
 
-                            $records->each->update([
+                            $authorized = $records->filter(fn ($record) => Gate::allows('manage', $record));
+
+                            if ($authorized->count() < $records->count()) {
+                                Notification::make()
+                                    ->title(__('padmission-tickets::tickets.resources.tickets.unauthorized_assignment'))
+                                    ->danger()
+                                    ->send();
+                            }
+
+                            $authorized->each->update([
                                 'assignee_id' => $data['assignee_id'],
                             ]);
                         })
