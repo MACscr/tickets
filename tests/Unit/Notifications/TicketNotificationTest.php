@@ -241,3 +241,31 @@ test('queued notification includes management activities for the supporter recip
 
     expect((new TicketNotification($ticket, $event))->shouldSend($submitter))->toBeFalse();
 });
+
+test('created notification sends even when the ticket has no unread activities', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => null,
+    ]);
+
+    expect($ticket->ticketActivities()->count())->toBe(0);
+
+    $event = new TicketCreatedEvent($ticket);
+
+    expect((new TicketNotification($ticket, $event))->shouldSend($submitter))->toBeTrue();
+});
+
+test('activity notification is still gated on unread activities', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => null,
+    ]);
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message);
+
+    expect((new TicketNotification($ticket, $event))->shouldSend($submitter))->toBeFalse();
+});

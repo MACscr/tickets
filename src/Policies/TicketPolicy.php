@@ -41,7 +41,13 @@ class TicketPolicy
 
     public function manage($user, Ticket $ticket): bool
     {
-        return true;
+        if ($user->id === $ticket->submitter_id) {
+            return false;
+        }
+
+        $panel = Filament::getPanel($ticket->panel);
+
+        return $user->canAccessPanel($panel);
     }
 
     public function escalate($user, Ticket $ticket): bool

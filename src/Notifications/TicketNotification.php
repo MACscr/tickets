@@ -31,6 +31,16 @@ class TicketNotification extends Notification
 
     public function shouldSend($notifiable): bool
     {
+        /*
+         * A created event is an acknowledgement of the ticket itself, so it
+         * must not be gated on unread activity: the ticket may not have any
+         * activities yet at creation time (or the notification may run before
+         * they are written when dispatched synchronously).
+         */
+        if ($this->notificationType === 'created') {
+            return true;
+        }
+
         $activityService = resolve(TicketActivityService::class);
         $maxEvents = config('padmission-tickets.notification-max-events', 10);
 

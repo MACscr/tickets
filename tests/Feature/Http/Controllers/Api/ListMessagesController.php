@@ -156,3 +156,16 @@ it('returns only messages after the offset cursor in ascending order', function 
 
     expect($ids)->toBe([$second->id, $third->id]);
 });
+
+it('forbids listing messages when the user cannot view the ticket even when manage passes', function () {
+    Gate::before(fn (User $authUser, string $ability) => $ability === 'view' ? false : null);
+
+    $user = User::factory()->create();
+    $ticket = Ticket::factory()->create();
+
+    $this->actingAs($user);
+
+    $this
+        ->getJson(route('padmission-tickets::api.messages.index', ['ticket' => $ticket]))
+        ->assertForbidden();
+});

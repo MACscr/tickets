@@ -122,3 +122,18 @@ it('attaches the user\'s own pending attachments for the ticket', function () {
 
     expect($attachment->activity_id)->not->toBeNull();
 });
+
+it('forbids posting a message to a ticket the user cannot view even when manage passes', function () {
+    Gate::before(fn (User $authUser, string $ability) => $ability === 'view' ? false : null);
+
+    $user = User::factory()->create();
+    $ticket = Ticket::factory()->create();
+
+    $this->actingAs($user);
+
+    $this
+        ->postJson(route('padmission-tickets::api.messages.store', ['ticket' => $ticket]), [
+            'content' => 'Hello',
+        ])
+        ->assertForbidden();
+});
