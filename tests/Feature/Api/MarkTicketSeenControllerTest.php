@@ -65,8 +65,8 @@ test('updates existing last_seen record', function () {
         'last_seen_activity_id' => $activity2->id,
     ]);
 
-    expect($ticket->ticketUserStates()->count())->toBe(1);
-    expect($ticket->ticketUserStates()->first()->last_seen_activity_id)->toBe($activity2->id);
+    expect($ticket->ticketUserStates()->where('user_id', $this->user->id)->count())->toBe(1);
+    expect($ticket->ticketUserStates()->where('user_id', $this->user->id)->first()->last_seen_activity_id)->toBe($activity2->id);
 });
 
 test('requires authentication', function () {

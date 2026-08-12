@@ -1,9 +1,11 @@
 <?php
 
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\Event;
 use Padmission\Tickets\AssignmentStrategies\AssignmentStrategy;
 use Padmission\Tickets\Database\Seeders\TicketStatusSeeder;
 use Padmission\Tickets\Enums\ActivityType;
+use Padmission\Tickets\Events\TicketClosedEvent;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
 use Padmission\Tickets\Models\TicketDisposition;
@@ -64,6 +66,43 @@ it('can be closed', function () {
         ->status->toEqual(TicketStatus::getClosedStatus())
         ->closed_at->toEqual(now())
         ->closed_by->toEqual($user->id);
+});
+
+it('fires the closed event with the explicit closer as actor when unauthenticated', function () {
+    (new TicketStatusSeeder)->run();
+
+    $ticket = Ticket::factory()->open()->create();
+    $user = User::factory()->create();
+
+    Event::fake([TicketClosedEvent::class]);
+
+    expect(auth()->user())->toBeNull();
+
+    $ticket->close(closedById: $user->id);
+
+    Event::assertDispatched(
+        TicketClosedEvent::class,
+        fn (TicketClosedEvent $event): bool => $event->actor?->getKey() === $user->getKey()
+    );
+});
+
+it('fires the closed event with the explicit closer as actor when another user is authenticated', function () {
+    (new TicketStatusSeeder)->run();
+
+    $ticket = Ticket::factory()->open()->create();
+    $authenticatedUser = User::factory()->create();
+    $closer = User::factory()->create();
+
+    $this->actingAs($authenticatedUser);
+
+    Event::fake([TicketClosedEvent::class]);
+
+    $ticket->close(closedById: $closer->id);
+
+    Event::assertDispatched(
+        TicketClosedEvent::class,
+        fn (TicketClosedEvent $event): bool => $event->actor?->getKey() === $closer->getKey()
+    );
 });
 
 it('cannot be closed twice', function () {

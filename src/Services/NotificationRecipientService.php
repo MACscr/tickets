@@ -14,6 +14,7 @@ use Padmission\Tickets\Events\TicketClosedEvent;
 use Padmission\Tickets\Events\TicketCreatedEvent;
 use Padmission\Tickets\Events\TicketPriorityChangedEvent;
 use Padmission\Tickets\Events\TicketStatusChangedEvent;
+use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\TicketPlugin;
 
 class NotificationRecipientService
@@ -37,14 +38,29 @@ class NotificationRecipientService
         ) {
             $recipients->push($event->ticket->submitter);
         }
-        if (
-            $event->ticket->assignee
-            && ($recipientFlag & NotificationRecipient::Supporter->value) === NotificationRecipient::Supporter->value
-        ) {
-            $recipients->push($event->ticket->assignee);
+        if (($recipientFlag & NotificationRecipient::Supporter->value) === NotificationRecipient::Supporter->value) {
+            if ($event->ticket->assignee) {
+                $recipients->push($event->ticket->assignee);
+            } else {
+                $recipients = $recipients->merge($this->getFallbackSupporters($event->ticket, $event->actor));
+            }
         }
 
-        return $recipients->filter()->unique('id');
+        return $recipients->filter()->unique(fn ($user) => $user->getKey());
+    }
+
+    private function getFallbackSupporters(Ticket $ticket, ?Authenticatable $actor): Collection
+    {
+        $supportersQuery = TicketPlugin::get($ticket->panel)->getAllSupportersQuery();
+
+        if (! $supportersQuery) {
+            return collect();
+        }
+
+        return app()->call($supportersQuery, ['ticket' => $ticket])
+            ->when($actor, fn ($query) => $query->whereKeyNot($actor->getKey()))
+            ->when($ticket->submitter_id, fn ($query) => $query->whereKeyNot($ticket->submitter_id))
+            ->get();
     }
 
     private function determineTriggerType($event): NotificationTrigger

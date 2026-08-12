@@ -333,6 +333,14 @@ class TicketPlugin implements Plugin
         return $this->shouldShowChatWidget;
     }
 
+    /**
+     * The closure may declare an optional `Padmission\Tickets\Models\Ticket $ticket`
+     * parameter; it is provided when supporters are resolved for a specific ticket
+     * (e.g. notification fallback when the ticket has no assignee). In multi-tenant
+     * hosts the closure MUST scope the query by the ticket's tenant whenever the
+     * ticket is provided, because resolution can run in queued or console contexts
+     * where the host's tenant scope is not bound.
+     */
     public function allSupportersQuery(Closure|Builder $query): static
     {
         $this->allSupportersQuery = $query;

@@ -35,9 +35,11 @@ class TicketNotification extends Notification
          * A created event is an acknowledgement of the ticket itself, so it
          * must not be gated on unread activity: the ticket may not have any
          * activities yet at creation time (or the notification may run before
-         * they are written when dispatched synchronously).
+         * they are written when dispatched synchronously). A closed event
+         * likewise always deserves a distinct email, even when a debounced
+         * activity notification already consumed the closing activity.
          */
-        if ($this->notificationType === 'created') {
+        if (in_array($this->notificationType, ['created', 'closed'], true)) {
             return true;
         }
 
@@ -74,6 +76,15 @@ class TicketNotification extends Notification
 
         $hasMoreActivities = $activities->count() > $maxEvents;
 
+        /*
+         * Intentional: the fetch is newest-first, so on overflow the email renders
+         * only the latest $maxEvents activities while markAsSent (above, keyed on
+         * the newest id) marks EVERY unread activity as notified — including ones
+         * never fetched. Activities older than the rendered window are deliberately
+         * never emailed; the "more activities" banner directs the recipient to the
+         * site for full history. Do not "fix" by re-slicing or by marking only
+         * rendered activities as sent.
+         */
         if ($hasMoreActivities) {
             $activities = $activities->slice(1, $maxEvents);
         }

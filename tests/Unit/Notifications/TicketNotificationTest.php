@@ -5,6 +5,7 @@ use Padmission\Tickets\Enums\ActivitySender;
 use Padmission\Tickets\Enums\ActivitySide;
 use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Events\TicketActivityEvent;
+use Padmission\Tickets\Events\TicketClosedEvent;
 use Padmission\Tickets\Events\TicketCreatedEvent;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
@@ -255,6 +256,85 @@ test('created notification sends even when the ticket has no unread activities',
     $event = new TicketCreatedEvent($ticket);
 
     expect((new TicketNotification($ticket, $event))->shouldSend($submitter))->toBeTrue();
+});
+
+test('closed notification sends with the closed subject even after the activity notification consumed all activities', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => $supporter->id,
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'user_id' => $supporter->id,
+        'sender' => ActivitySender::Supporter,
+        'type' => ActivityType::Message,
+        'content' => 'Support reply',
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'sender' => ActivitySender::System,
+        'type' => ActivityType::Closed,
+        'data' => ['closed_by' => $supporter->id, 'disposition_id' => null],
+    ]);
+
+    $activityEvent = new TicketActivityEvent($ticket, ActivityType::Message);
+    (new TicketNotification($ticket, $activityEvent))->toMail($submitter);
+
+    $closedEvent = new TicketClosedEvent($ticket, $supporter);
+    $closedNotification = new TicketNotification($ticket, $closedEvent);
+
+    expect($closedNotification->shouldSend($submitter))->toBeTrue();
+
+    $mail = $closedNotification->toMail($submitter);
+
+    expect($mail->subject)->toBe(__('padmission-tickets::notifications.ticket-closed.subject', [
+        'subject' => $ticket->subject,
+        'ticket_id' => $ticket->id,
+    ]));
+
+    $rendered = $mail->render();
+
+    expect((string) $rendered)->toContain(__('padmission-tickets::notifications.ticket-closed.headline'));
+});
+
+test('closed notification renders pending activities when it fires before the activity notification', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => $supporter->id,
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'user_id' => $supporter->id,
+        'sender' => ActivitySender::Supporter,
+        'type' => ActivityType::Message,
+        'content' => 'Support reply',
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'sender' => ActivitySender::System,
+        'type' => ActivityType::Closed,
+        'data' => ['closed_by' => $supporter->id, 'disposition_id' => null],
+    ]);
+
+    $closedEvent = new TicketClosedEvent($ticket, $supporter);
+    $closedNotification = new TicketNotification($ticket, $closedEvent);
+
+    expect($closedNotification->shouldSend($submitter))->toBeTrue();
+
+    $rendered = (string) $closedNotification->toMail($submitter)->render();
+
+    expect($rendered)->toContain('Support reply')
+        ->and($rendered)->toContain(__('padmission-tickets::notifications.ticket-closed.headline'));
 });
 
 test('activity notification is still gated on unread activities', function () {
