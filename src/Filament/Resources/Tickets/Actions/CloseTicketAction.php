@@ -5,7 +5,9 @@ namespace Padmission\Tickets\Filament\Resources\Tickets\Actions;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
+use Illuminate\Database\Eloquent\Builder;
 use Livewire\Component;
+use Padmission\Tickets\Models\Scopes\CurrentPanelScope;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketDisposition;
 use Padmission\Tickets\TicketPlugin;
@@ -42,7 +44,11 @@ class CloseTicketAction extends Action
             $this->schema([
                 Select::make('disposition')
                     ->label(__('padmission-tickets::tickets.actions.close.disposition.label'))
-                    ->relationship('disposition', 'display_name')
+                    ->relationship(
+                        'disposition',
+                        'display_name',
+                        fn ($query) => $this->scopeDispositionsToTicket($query, $this->getRecord()),
+                    )
                     ->lazy()
                     ->required(),
             ]);
@@ -63,5 +69,24 @@ class CloseTicketAction extends Action
         $dispositionModel = TicketPlugin::resolveModelClass(TicketDisposition::class);
 
         return $dispositionModel::query()->exists();
+    }
+
+    protected function scopeDispositionsToTicket(Builder $query, mixed $ticket): Builder
+    {
+        $query->withoutGlobalScope(CurrentPanelScope::class);
+
+        if ($ticket instanceof Ticket && filled($ticket->panel)) {
+            $query->where($query->getModel()->qualifyColumn('panel'), $ticket->panel);
+        }
+
+        if (
+            $ticket instanceof Ticket
+            && config('padmission-tickets.tenancy.enabled')
+            && filled($ticket->getAttribute('tenant_id'))
+        ) {
+            $query->where($query->getModel()->qualifyColumn('tenant_id'), $ticket->tenant_id);
+        }
+
+        return $query;
     }
 }

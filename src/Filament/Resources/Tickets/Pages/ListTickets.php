@@ -73,7 +73,7 @@ class ListTickets extends ListRecords
                 ->modifyQueryUsing(fn (Builder $query) => TicketResource::scopeListQueryToSupporterOrSubmitter(
                     $query
                         ->tap(new CurrentPanelScope)
-                        ->where('assignee_id', Filament::auth()->id())
+                        ->whereIn('assignee_id', TicketPlugin::get()->getCurrentUserAssigneeIds() ?: [0])
                 )),
         ];
 

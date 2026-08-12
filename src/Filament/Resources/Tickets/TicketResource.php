@@ -52,7 +52,7 @@ class TicketResource extends Resource
         return (string) TicketPlugin::get()->getTicketQuery()
             ->open()
             ->tap(new CurrentPanelScope)
-            ->where('assignee_id', auth()->id())
+            ->whereIn('assignee_id', TicketPlugin::get()->getCurrentUserAssigneeIds() ?: [0])
             ->count();
     }
 
