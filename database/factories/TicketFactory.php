@@ -16,7 +16,7 @@ class TicketFactory extends Factory
 {
     protected $model = Ticket::class;
 
-    public function getModel(): string
+    public function modelName(): string
     {
         return TicketPlugin::resolveModelClass($this->model);
     }

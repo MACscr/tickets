@@ -11,7 +11,7 @@ class TicketPriorityFactory extends Factory
 {
     protected $model = TicketPriority::class;
 
-    public function getModel(): string
+    public function modelName(): string
     {
         return TicketPlugin::resolveModelClass($this->model);
     }
