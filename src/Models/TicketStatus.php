@@ -44,7 +44,7 @@ class TicketStatus extends Model
         /** @var static */
         return self::query()
             ->tap(new CurrentPanelScope)
-            ->orderBy('order', 'DESC')
+            ->orderBy('order', 'desc')
             ->firstOrFail();
     }
 }

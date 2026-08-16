@@ -61,6 +61,9 @@ class TicketResource extends Resource
         return TicketPlugin::resolveModelClass(Ticket::class);
     }
 
+    /**
+     * @return Builder<Ticket>
+     */
     public static function getEloquentQuery(): Builder
     {
         return TicketPlugin::get()->getTicketQuery();

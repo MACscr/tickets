@@ -157,11 +157,11 @@ class TicketMetricsService
 
     /**
      * @return array{
-     *     opened: int,
-     *     closed: int,
+     *     opened: array<string, int>,
+     *     closed: array<string, int>,
      *     openAtStart: int,
-     *     startDate: Carbon,
-     *     endDate: Carbon
+     *     startDate: CarbonImmutable,
+     *     endDate: CarbonImmutable
      * }
      */
     public function getBurndownData(int $days): array
