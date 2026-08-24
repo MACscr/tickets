@@ -1,6 +1,5 @@
 import BaseElement from "../helpers/base-element";
 import render from "../helpers/render";
-import config from "../helpers/config.js";
 import __ from "../helpers/trans.js";
 
 customElements.define(
@@ -52,7 +51,6 @@ customElements.define(
                     <main>
                         <chat-component
                             ticket-id="${this.ticketId || ""}"
-                            default-message="${config.introMessage || ""}"
                             scroll-threshold="100"
                             polling-interval="10000"
                         />

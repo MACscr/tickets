@@ -65,7 +65,7 @@ customElements.define(
 
 			const ticketId = hash.substring(8);
 
-			if (!ticketId) {
+			if (!/^\d+$/.test(ticketId)) {
 				return;
 			}
 
