@@ -163,6 +163,17 @@ class TicketPlugin implements Plugin
         return (string) ($jobs[$class] ?? $class);
     }
 
+    /**
+     * @param  class-string  $class
+     * @return class-string
+     */
+    public static function resolvePolicyClass(string $class): string
+    {
+        $policies = config()->array('padmission-tickets.policies');
+
+        return (string) ($policies[$class] ?? $class);
+    }
+
     /* Configuration options */
     public function dateTimeDisplayFormat(string $format): self
     {
