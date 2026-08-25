@@ -1,6 +1,7 @@
 import BaseElement from "../helpers/base-element";
 import render from "../helpers/render";
 import config from "../helpers/config.js";
+import escapeHtml from "../helpers/escape-html.js";
 import __ from "../helpers/trans.js";
 
 customElements.define(
@@ -11,7 +12,7 @@ customElements.define(
 		}
 		renderedCallback() {
 			window.addEventListener("ticket-created", (event) => {
-				this.querySelector("[data-chat-subject]").innerHTML =
+				this.querySelector("[data-chat-subject]").textContent =
 					event.detail.subject;
 			});
 		}
@@ -35,7 +36,7 @@ customElements.define(
                         </button>
 
                         <h2 data-chat-subject>
-                            ${this.subject || __('view.new_chat')}
+                            ${this.subject ? escapeHtml(this.subject) : __('view.new_chat')}
                         </h2>
 
                         <form data-close-dialog>
@@ -51,7 +52,7 @@ customElements.define(
 
                     <main>
                         <chat-component
-                            ticket-id="${this.ticketId || ""}"
+                            ticket-id="${escapeHtml(this.ticketId || "")}"
                             default-message="${config.introMessage || ""}"
                             scroll-threshold="100"
                             polling-interval="10000"
