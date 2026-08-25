@@ -1,6 +1,8 @@
 <?php
 
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
+use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Padmission\Tickets\Database\Seeders\TicketPrioritySeeder;
@@ -9,6 +11,7 @@ use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Enums\Turn;
 use Padmission\Tickets\Filament\Resources\Tickets\Actions\CreateLinkedTicketAction;
 use Padmission\Tickets\Filament\Resources\Tickets\Pages\ViewTicket;
+use Padmission\Tickets\Filament\Resources\Tickets\TicketResource;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketStatus;
 use Padmission\Tickets\Tests\User;
@@ -180,8 +183,28 @@ it('shows a link to the ticket in the users existing panel', function () {
             'subject' => 'Notification Test',
             'message' => tiptapDocument('Notification test message'),
         ])
-        ->assertHasNoFormErrors()
-        ->assertNotified();
+        ->assertHasNoFormErrors();
+
+    $newTicket = Ticket::where('subject', 'Notification Test')->sole();
+
+    // Assert through Filament's own testing API rather than reading
+    // `filament.notifications` off the session: since Filament v4.10.2 a
+    // dehydrating Livewire request moves pending notifications to
+    // `filament.claimed_notifications`, so the original key is already empty
+    // by the time the test reads it.
+    Notification::assertNotified(
+        Notification::make()
+            ->success()
+            ->title(__('padmission-tickets::tickets.actions.create_linked_ticket.notifications.success.title'))
+            ->body(__('padmission-tickets::tickets.actions.create_linked_ticket.notifications.success.body'))
+            ->actions([
+                Action::make('link')
+                    ->label(__('padmission-tickets::tickets.actions.create_linked_ticket.notifications.success.action_label'))
+                    // The user cannot access the panel the linked ticket was created in,
+                    // so the link has to point at the ticket in their existing panel.
+                    ->url(TicketResource::getUrl('view', ['record' => $newTicket], panel: 'test')),
+            ])
+    );
 });
 
 it('requires subject field', function () {
