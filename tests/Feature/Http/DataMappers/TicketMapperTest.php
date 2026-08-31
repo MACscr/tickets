@@ -13,6 +13,15 @@ it('returns subjects stored HTML encoded as plain text', function () {
         ->toBe('Tom & Jerry <3 "quoted" it\'s');
 });
 
+it('decodes HTML5 named entities in subjects', function () {
+    $ticket = Ticket::factory()->create([
+        'subject' => 'it&apos;s &lpar;fine&rpar;',
+    ]);
+
+    expect(TicketMapper::map($ticket)['subject'])
+        ->toBe("it's (fine)");
+});
+
 it('returns subjects stored raw as plain text', function () {
     $ticket = Ticket::factory()->create([
         'subject' => '<img src=x onerror=alert(1)>',
