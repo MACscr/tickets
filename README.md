@@ -304,11 +304,14 @@ registers, so you don't need to call `Gate::policy()` yourself. If you'd rather 
 it from your own service provider, that still works and takes precedence:
 
 ```php
-use Padmission\Tickets\Models\Ticket;
 use Illuminate\Support\Facades\Gate;
+use Padmission\Tickets\Models\Ticket;
+use Padmission\Tickets\TicketPlugin;
 
+// Resolve the model first: if you have swapped the ticket model, the package bound
+// the policy to your class, so binding to `Ticket::class` here would not override it.
 Gate::policy(
-    Ticket::class,
+    TicketPlugin::resolveModelClass(Ticket::class),
     YourTicketPolicy::class
 );
 ```
