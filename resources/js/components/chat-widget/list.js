@@ -27,7 +27,7 @@ customElements.define(
                                     <div class="ticket__header">
                                         <div>
                                             <span class="badge ticket__id">#${ticket.id}</span>
-                                            <span class="badge" style="--color: ${ticket.status.color}">${ticket.status.display_name}</span>
+                                            <span class="badge" style="--color: ${escapeHtml(ticket.status.color)}">${escapeHtml(ticket.status.display_name)}</span>
                                             ${ticket.needs_attention ? `<span class="badge" style="--color: #f59e0b">${__('list.needs_attention')}</span>` : ''}
                                         </div>
                                         <div>

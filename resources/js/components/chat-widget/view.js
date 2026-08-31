@@ -53,7 +53,7 @@ customElements.define(
                     <main>
                         <chat-component
                             ticket-id="${escapeHtml(this.ticketId || "")}"
-                            default-message="${config.introMessage || ""}"
+                            default-message="${escapeHtml(config.introMessage || "")}"
                             scroll-threshold="100"
                             polling-interval="10000"
                         />
