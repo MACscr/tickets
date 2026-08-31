@@ -12,7 +12,7 @@ final class AssignUserWithLeastTickets extends PanelAwareAssignmentStrategy
             ->withCount([
                 'assignedTickets' => fn ($query) => $query->open(),
             ])
-            ->orderBy('assigned_tickets_count', 'ASC')
+            ->orderBy('assigned_tickets_count', 'asc')
             ->get();
 
         if ($users->isEmpty()) {

@@ -21,7 +21,7 @@ class ListTicketsController
         $this->authorize('create', $ticketModel);
 
         $tickets = $ticketModel::query()
-            ->with(['latestMessage', 'ticketLastSeen', 'ticketActivities'])
+            ->with(['latestMessage', 'ticketUserStates', 'ticketActivities'])
             ->where('submitter_id', $request->user()->id)
             ->orderBy('updated_at', 'desc')
             ->get();

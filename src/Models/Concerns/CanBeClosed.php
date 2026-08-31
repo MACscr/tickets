@@ -2,6 +2,7 @@
 
 namespace Padmission\Tickets\Models\Concerns;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Padmission\Tickets\Enums\ActivitySender;
@@ -64,7 +65,18 @@ trait CanBeClosed
             ['closed_by' => $closedById, 'disposition_id' => $dispositionId]
         );
 
-        event(new TicketClosedEvent($this, auth()->user()));
+        event(new TicketClosedEvent($this, $this->resolveClosingActor($closedById)));
+    }
+
+    protected function resolveClosingActor(?int $closedById): ?Authenticatable
+    {
+        $authenticatedUser = auth()->user();
+
+        if ($closedById === null || ($authenticatedUser && (int) $authenticatedUser->getAuthIdentifier() === $closedById)) {
+            return $authenticatedUser;
+        }
+
+        return TicketPlugin::resolveUserModelClass()::find($closedById);
     }
 
     /* Attributes */

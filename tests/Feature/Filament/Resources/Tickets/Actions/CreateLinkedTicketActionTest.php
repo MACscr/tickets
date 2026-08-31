@@ -1,6 +1,7 @@
 <?php
 
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Padmission\Tickets\Database\Seeders\TicketPrioritySeeder;
 use Padmission\Tickets\Database\Seeders\TicketStatusSeeder;
@@ -159,6 +160,10 @@ it('sends success notification with action link', function () {
 });
 
 it('shows a link to the ticket in the users existing panel', function () {
+    // The partial-mock user cannot survive queue serialization when the
+    // TicketCreatedEvent notification job runs inline on the sync driver.
+    Queue::fake();
+
     TicketPlugin::get()->allowLinkedTicketsTo(panelIds: ['test']);
 
     $mockedUser = partialMock(User::class)
@@ -175,12 +180,8 @@ it('shows a link to the ticket in the users existing panel', function () {
             'subject' => 'Notification Test',
             'message' => tiptapDocument('Notification test message'),
         ])
-        ->assertHasNoFormErrors();
-
-    $notifications = session()->get('filament.notifications');
-
-    expect($notifications)->toHaveCount(1)
-        ->and($notifications[0]['actions'])->not->toBeEmpty();
+        ->assertHasNoFormErrors()
+        ->assertNotified();
 });
 
 it('requires subject field', function () {

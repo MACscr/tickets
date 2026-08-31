@@ -5,9 +5,10 @@ use Filament\Panel;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
 use Padmission\Tickets\Models\TicketDisposition;
-use Padmission\Tickets\Models\TicketLastSeen;
+use Padmission\Tickets\Models\TicketNotification;
 use Padmission\Tickets\Models\TicketPriority;
 use Padmission\Tickets\Models\TicketStatus;
+use Padmission\Tickets\Models\TicketUserState;
 use Padmission\Tickets\TicketPlugin;
 
 class CustomTicket extends Ticket {}
@@ -20,7 +21,9 @@ class CustomTicketStatus extends TicketStatus {}
 
 class CustomTicketPriority extends TicketPriority {}
 
-class CustomTicketLastSeen extends TicketLastSeen {}
+class CustomTicketNotification extends TicketNotification {}
+
+class CustomTicketUserState extends TicketUserState {}
 
 it('resolves model classes', function () {
     expect(TicketPlugin::resolveModelClass(Ticket::class))->toBe(Ticket::class);
@@ -42,7 +45,8 @@ it('ensures model resolution works with custom models', function (string $given,
     [TicketDisposition::class, CustomTicketDisposition::class],
     [TicketStatus::class, CustomTicketStatus::class],
     [TicketPriority::class, CustomTicketPriority::class],
-    [TicketLastSeen::class, CustomTicketLastSeen::class],
+    [TicketNotification::class, CustomTicketNotification::class],
+    [TicketUserState::class, CustomTicketUserState::class],
 ]);
 
 describe('Linked Tickets', function () {

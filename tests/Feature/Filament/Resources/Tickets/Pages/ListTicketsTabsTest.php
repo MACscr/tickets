@@ -46,6 +46,33 @@ it('shows all tickets in "all" tab', function () {
         ->assertCanSeeTableRecords([$tickets->first()->id]);
 });
 
+it('shows my tickets for every id returned by the assignee resolver', function () {
+    (new TicketStatusSeeder)->run();
+
+    $user = $this->login();
+    $otherUser = User::factory()->create();
+
+    TicketPlugin::get()->currentUserAssigneeIds(fn (): array => [$user->id, $otherUser->id]);
+
+    $ticketModel = TicketPlugin::resolveModelClass(Ticket::class);
+
+    $tickets = $ticketModel::factory()
+        ->sequence(
+            ['assignee_id' => $user->id],
+            ['assignee_id' => $otherUser->id],
+            ['assignee_id' => null],
+        )
+        ->count(3)
+        ->open()
+        ->create([
+            'status_id' => TicketStatus::getOpenStatuses()->first()->id,
+        ]);
+
+    Livewire::test(ListTickets::class, ['activeTab' => 'my'])
+        ->assertCountTableRecords(2)
+        ->assertCanSeeTableRecords([$tickets[0]->id, $tickets[1]->id]);
+});
+
 it('shows my tickets tab filtered by assignee', function () {
     (new TicketStatusSeeder)->run();
 

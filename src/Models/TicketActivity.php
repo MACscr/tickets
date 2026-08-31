@@ -3,9 +3,11 @@
 namespace Padmission\Tickets\Models;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 use Padmission\Tickets\Actions\GetUserDisplayName;
 use Padmission\Tickets\Database\Factories\TicketActivityFactory;
 use Padmission\Tickets\Enums\ActivitySender;
@@ -21,6 +23,7 @@ use Padmission\Tickets\TicketPlugin;
 /**
  * @property ActivitySide $side
  */
+#[ObservedBy(TicketActivityObserver::class)]
 class TicketActivity extends Model
 {
     use HasFactory;
@@ -40,13 +43,6 @@ class TicketActivity extends Model
     ];
 
     protected static string $factory = TicketActivityFactory::class;
-
-    protected static function boot(): void
-    {
-        parent::boot();
-
-        static::observe(TicketActivityObserver::class);
-    }
 
     /**
      * @return Relations\PanelAwareBelongsTo<Ticket,$this>
@@ -68,6 +64,24 @@ class TicketActivity extends Model
             TicketPlugin::resolveUserModelClass(),
             'user'
         );
+    }
+
+    public function plainTextContent(?int $words = null): ?string
+    {
+        $content = $this->content;
+
+        if ($content === null) {
+            return null;
+        }
+
+        $spacedContent = preg_replace('/<br\s*\/?>|<\/(?:p|div|li|h[1-6]|blockquote|pre|tr)>/i', ' ', (string) $content) ?? (string) $content;
+        $plainText = Str::squish(html_entity_decode(strip_tags($spacedContent), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+
+        if ($plainText === '') {
+            return null;
+        }
+
+        return $words === null ? $plainText : Str::words($plainText, $words);
     }
 
     /**
@@ -94,22 +108,55 @@ class TicketActivity extends Model
         return Attribute::get(fn ($value) => match ($this->type) {
             ActivityType::Opened => __('padmission-tickets::activities.opened'),
             ActivityType::Closed => __('padmission-tickets::activities.closed'),
-            ActivityType::AssigneeChanged => filled($this->data['to'])
-                ? __('padmission-tickets::activities.assigned_to', ['name' => resolve(GetUserDisplayName::class)($this->data['to'])])
+            ActivityType::AssigneeChanged => filled($this->activityData('to'))
+                ? __('padmission-tickets::activities.assigned_to', ['name' => resolve(GetUserDisplayName::class)($this->activityData('to'))])
                 : __('padmission-tickets::activities.unassigned'),
             ActivityType::TurnChanged => __('padmission-tickets::activities.turn_changed', [
-                'from' => Turn::tryFrom($this->data['from'])->getLabel(),
-                'to' => Turn::tryFrom($this->data['to'])->getLabel(),
+                'from' => $this->turnLabel($this->activityData('from')),
+                'to' => $this->turnLabel($this->activityData('to')),
             ]),
             ActivityType::StatusChanged => __('padmission-tickets::activities.status_changed', [
-                'from' => TicketStatus::withoutGlobalScope(CurrentPanelScope::class)->find($this->data['from'])->display_name,
-                'to' => TicketStatus::withoutGlobalScope(CurrentPanelScope::class)->find($this->data['to'])->display_name,
+                'from' => $this->statusLabel($this->activityData('from')),
+                'to' => $this->statusLabel($this->activityData('to')),
             ]),
             ActivityType::PriorityChanged => __('padmission-tickets::activities.priority_changed', [
-                'from' => TicketPriority::withoutGlobalScope(CurrentPanelScope::class)->find($this->data['from'])->display_name,
-                'to' => TicketPriority::withoutGlobalScope(CurrentPanelScope::class)->find($this->data['to'])->display_name,
+                'from' => $this->priorityLabel($this->activityData('from')),
+                'to' => $this->priorityLabel($this->activityData('to')),
             ]),
             default => $value
         });
+    }
+
+    protected function activityData(string $key): mixed
+    {
+        return data_get($this->data ?? [], $key);
+    }
+
+    protected function turnLabel(mixed $value): string
+    {
+        if (! is_string($value)) {
+            return $this->unknownLabel();
+        }
+
+        return Turn::tryFrom($value)?->getLabel() ?? $this->unknownLabel();
+    }
+
+    protected function statusLabel(mixed $id): string
+    {
+        return TicketStatus::withoutGlobalScope(CurrentPanelScope::class)
+            ->find($id)
+            ->display_name ?? $this->unknownLabel();
+    }
+
+    protected function priorityLabel(mixed $id): string
+    {
+        return TicketPriority::withoutGlobalScope(CurrentPanelScope::class)
+            ->find($id)
+            ->display_name ?? $this->unknownLabel();
+    }
+
+    protected function unknownLabel(): string
+    {
+        return __('padmission-tickets::activities.unknown');
     }
 }

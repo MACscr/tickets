@@ -14,7 +14,7 @@ class TicketMapper
             'id' => $ticket->id,
             'subject' => $ticket->subject,
             'status' => TicketStatusMapper::map($ticket->status),
-            'latest_message' => str($ticket->latestMessage?->content)->stripTags()->words(20),
+            'latest_message' => $ticket->latestMessage?->plainTextContent(20),
             'is_closed' => $ticket->isClosed,
             'needs_attention' => $ticket->turn === Turn::User,
             'is_unread' => $user ? $ticket->hasUnreadMessagesFor($user) : false,
