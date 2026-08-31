@@ -45,7 +45,11 @@ class NotificationJob implements ShouldBeUnique, ShouldQueue
             ->replace('Event', '')
             ->lower()
             ->toString();
+
+        $this->initializeJob($user, $model);
     }
+
+    protected function initializeJob(Authenticatable $user, Ticket $model): void {}
 
     public function handle(): void
     {
@@ -104,13 +108,14 @@ class NotificationJob implements ShouldBeUnique, ShouldQueue
     /**
      * Build the unique ID for this job (can be overridden for custom logic)
      *
-     * Note: We only use ticket-user combination for the unique ID to ensure
-     * that new activities for the same ticket-user pair will replace existing
-     * debounced notifications, which is exactly what we want for debouncing.
+     * Note: The ticket-user combination coalesces repeated activity for the
+     * same ticket-user pair into one debounced notification. The event type is
+     * included so materially different events (created, assigned, closed)
+     * cannot be silently dropped by a pending job for another event type.
      */
     public function uniqueId(): string
     {
-        return "notification-{$this->ticketClass}-{$this->ticketKey}-{$this->userId}";
+        return "notification-{$this->ticketClass}-{$this->ticketKey}-{$this->userId}-{$this->notificationType}";
     }
 
     public function getUserId(): string|int

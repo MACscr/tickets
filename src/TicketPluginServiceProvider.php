@@ -8,8 +8,11 @@ use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
+use Livewire\Livewire;
 use Padmission\Tickets\Console\Commands\SeedTicketsCommand;
 use Padmission\Tickets\Listeners\TicketNotificationListener;
+use Padmission\Tickets\Livewire\CopilotTicketPanel;
+use Padmission\Tickets\Services\CopilotTicketService;
 use Padmission\Tickets\Services\NotificationRecipientService;
 use Padmission\Tickets\Services\TicketActivityService;
 use Padmission\Tickets\Services\TicketUrlService;
@@ -49,6 +52,7 @@ class TicketPluginServiceProvider extends PackageServiceProvider
     public function packageBooted(): void
     {
         $this->bootEventListeners();
+        $this->registerLivewireComponents();
     }
 
     public function packageRegistered(): void
@@ -72,9 +76,15 @@ class TicketPluginServiceProvider extends PackageServiceProvider
      */
     protected function registerServices(): void
     {
+        $this->app->singleton(CopilotTicketService::class);
         $this->app->singleton(TicketActivityService::class);
         $this->app->singleton(TicketUrlService::class);
         $this->app->singleton(NotificationRecipientService::class);
+    }
+
+    protected function registerLivewireComponents(): void
+    {
+        Livewire::component('padmission-tickets-copilot-panel', CopilotTicketPanel::class);
     }
 
     private function registerAssets(): void
@@ -143,6 +153,7 @@ class TicketPluginServiceProvider extends PackageServiceProvider
             Events\TicketActivityEvent::class,
             Events\TicketAssignedEvent::class,
             Events\TicketClosedEvent::class,
+            Events\TicketCreatedEvent::class,
         ];
 
         foreach ($events as $event) {

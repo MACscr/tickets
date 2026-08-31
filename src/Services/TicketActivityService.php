@@ -2,13 +2,15 @@
 
 namespace Padmission\Tickets\Services;
 
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Gate;
 use Padmission\Tickets\Enums\ActivitySender;
 use Padmission\Tickets\Enums\ActivitySide;
 use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
-use Padmission\Tickets\Models\TicketLastSeen;
+use Padmission\Tickets\Models\TicketUserState;
 
 class TicketActivityService
 {
@@ -16,19 +18,24 @@ class TicketActivityService
         Ticket $ticket,
         ?int $offsetId = null,
         ?int $limit = null,
+        $user = null,
     ): Collection {
-        $currentSender = auth()->id() === $ticket->submitter_id
+        $user ??= auth()->user();
+
+        $currentSender = $user?->getKey() === $ticket->submitter_id
             ? ActivitySender::User
             : ActivitySender::Supporter;
 
         return $ticket
             ->ticketActivities()
             ->with('user')
-            ->whereIn('type', $this->getActivityTypesForSender($ticket, $currentSender))
+            ->whereIn('type', $this->getActivityTypesForSender($ticket, $currentSender, $user))
             ->when($offsetId, fn ($query) => $query->where('id', '>', $offsetId))
             ->when($limit, fn ($query) => $query->limit($limit))
             ->orderBy('id', 'desc')
             ->get()
+            ->reverse()
+            ->values()
             ->map(function (TicketActivity $message) use ($currentSender) {
                 $message->side = match (true) {
                     $message->sender === ActivitySender::System => ActivitySide::System,
@@ -46,17 +53,20 @@ class TicketActivityService
         $notifiable,
         int $maxEvents
     ): Collection {
-        $lastSeen = $this->getLastSeen($ticket, $notifiable);
-        $offsetId = max($lastSeen?->last_notified_activity_id, $lastSeen?->last_seen_activity_id, 0);
+        $userState = $this->getUserState($ticket, $notifiable);
+        $offsetId = max($userState?->last_notified_activity_id, $userState?->last_seen_activity_id, 0);
 
-        return $this->getActivities($ticket, $offsetId, $maxEvents + 1)->reverse();
+        return $this->getActivities($ticket, $offsetId, $maxEvents + 1, $notifiable);
     }
 
-    public function getActivityTypesForSender(Ticket $ticket, $currentSender): array
+    public function getActivityTypesForSender(Ticket $ticket, $currentSender, $user = null): array
     {
+        $user ??= auth()->user();
+
         if (
             $currentSender === ActivitySender::Supporter
-            && auth()->user()?->can('manage', $ticket)
+            && $user
+            && Gate::forUser($user)->allows('manage', $ticket)
         ) {
             return array_filter(
                 ActivityType::cases(),
@@ -71,40 +81,52 @@ class TicketActivityService
         ];
     }
 
-    public function getLastSeen(Ticket $ticket, $notifiable): ?TicketLastSeen
+    public function getUserState(Ticket $ticket, $notifiable): ?TicketUserState
     {
-        /** @var TicketLastSeen|null $lastSeen */
-        $lastSeen = $ticket
-            ->ticketLastSeen()
+        /** @var TicketUserState|null $userState */
+        $userState = $ticket
+            ->ticketUserStates()
             ->where('user_id', $notifiable->getKey())
             ->first();
 
-        return $lastSeen;
+        return $userState;
     }
 
     public function markAsSeen(Ticket $ticket, $notifiable, int $activityId): void
     {
-        $ticket->ticketLastSeen()->updateOrCreate(
-            [
-                'user_id' => $notifiable->getKey(),
-                'ticket_id' => $ticket->id,
-            ],
-            [
-                'last_seen_activity_id' => $activityId,
-            ]
-        );
+        $this->advancePointer($ticket, $notifiable, 'last_seen_activity_id', $activityId);
     }
 
     public function markAsSent(Ticket $ticket, $notifiable, int $activityId): void
     {
-        $ticket->ticketLastSeen()->updateOrCreate(
-            [
+        $this->advancePointer($ticket, $notifiable, 'last_notified_activity_id', $activityId);
+    }
+
+    protected function advancePointer(Ticket $ticket, $notifiable, string $column, int $activityId): void
+    {
+        $advanceExisting = fn (): int => $ticket
+            ->ticketUserStates()
+            ->where('user_id', $notifiable->getKey())
+            ->where(fn ($query) => $query
+                ->whereNull($column)
+                ->orWhere($column, '<', $activityId))
+            ->update([$column => $activityId]); // @phpstan-ignore argument.type
+
+        if ($advanceExisting() > 0) {
+            return;
+        }
+
+        if ($ticket->ticketUserStates()->where('user_id', $notifiable->getKey())->exists()) {
+            return;
+        }
+
+        try {
+            $ticket->ticketUserStates()->create([ // @phpstan-ignore argument.type
                 'user_id' => $notifiable->getKey(),
-                'ticket_id' => $ticket->id,
-            ],
-            [
-                'last_notified_activity_id' => $activityId,
-            ]
-        );
+                $column => $activityId,
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            $advanceExisting();
+        }
     }
 }

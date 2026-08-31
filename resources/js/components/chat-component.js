@@ -171,12 +171,10 @@ customElements.define(
 
 		async loadMessages() {
 			try {
-				const isInitialLoad = this.lastMessageId === null;
-
 				const data = await fetchJson(
 					`/padmission-tickets/api/tickets/${this.ticketId}/messages`,
 					{
-						offset: isInitialLoad ? 0 : this.lastMessageId,
+						offset: this.lastMessageId,
 					},
 				);
 
@@ -187,13 +185,17 @@ customElements.define(
 					return;
 				}
 
-				const lastMessage = messages[messages.length - 1];
+				const newestMessage = messages[messages.length - 1];
+				const newestMessageId = messages.reduce(
+					(maxId, message) => Math.max(maxId, message.id),
+					this.lastMessageId,
+				);
 
-				this.lastTimestamp = lastMessage.created_at;
-				this.lastMessageId = lastMessage.id;
+				this.lastTimestamp = newestMessage.created_at;
+				this.lastMessageId = newestMessageId;
 
 				if (this.lastSeenMessageId === 0) {
-					this.lastSeenMessageId = lastMessage.id;
+					this.lastSeenMessageId = newestMessageId;
 				}
 
 				if (ticket.is_closed) {
@@ -801,6 +803,11 @@ customElements.define(
 				this.editor.commands.clearContent();
 
 				const messages = data.messages;
+
+				this.lastMessageId = messages.reduce(
+					(maxId, message) => Math.max(maxId, message.id ?? 0),
+					this.lastMessageId,
+				);
 
 				this.clearAttachments();
 				this.renderMessages(messages);

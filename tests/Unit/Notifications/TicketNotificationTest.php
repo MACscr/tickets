@@ -1,10 +1,15 @@
 <?php
 
+use Illuminate\Support\Facades\Queue;
+use Padmission\Tickets\Enums\ActivitySender;
+use Padmission\Tickets\Enums\ActivitySide;
 use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Events\TicketActivityEvent;
+use Padmission\Tickets\Events\TicketClosedEvent;
 use Padmission\Tickets\Events\TicketCreatedEvent;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
+use Padmission\Tickets\Models\TicketUserState;
 use Padmission\Tickets\Notifications\TicketNotification;
 use Padmission\Tickets\Tests\User;
 
@@ -67,10 +72,10 @@ test('respects debounce time window', function () {
     $firstMail = $notification->toMail($user);
 
     // Verify notification record was created
-    expect($ticket->ticketLastSeen()->where('user_id', $user->id)->count())
+    expect($ticket->ticketUserStates()->where('user_id', $user->id)->count())
         ->toBe(1);
 
-    $originalNotification = $ticket->ticketLastSeen()->where('user_id', $user->id)->first();
+    $originalNotification = $ticket->ticketUserStates()->where('user_id', $user->id)->first();
     $originalTimestamp = $originalNotification->updated_at->timestamp;
 
     // Travel forward in time (within debounce window)
@@ -91,7 +96,7 @@ test('respects debounce time window', function () {
     $secondMail = $secondNotification->toMail($user);
 
     // Should STILL only have 1 notification record (updated, not created new)
-    expect($ticket->ticketLastSeen()->where('user_id', $user->id)->count())
+    expect($ticket->ticketUserStates()->where('user_id', $user->id)->count())
         ->toBe(1);
 
     // Refresh the notification record and check it was updated
@@ -127,8 +132,38 @@ test('notifications are isolated per user', function () {
     $notification->toMail($user2);
 
     // Should have separate notification records
-    expect($ticket->ticketLastSeen()->where('user_id', $user1->id)->count())->toBe(1);
-    expect($ticket->ticketLastSeen()->where('user_id', $user2->id)->count())->toBe(1);
+    expect($ticket->ticketUserStates()->where('user_id', $user1->id)->count())->toBe(1);
+    expect($ticket->ticketUserStates()->where('user_id', $user2->id)->count())->toBe(1);
+});
+
+test('notification sending records the last notified activity without changing last seen state', function () {
+    $user = User::factory()->create();
+    $ticket = Ticket::factory()->create();
+
+    $seenActivity = TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'created_at' => now()->subMinutes(10),
+    ]);
+
+    $notifiedActivity = TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'created_at' => now()->subMinute(),
+    ]);
+
+    TicketUserState::factory()->create([
+        'ticket_id' => $ticket->id,
+        'user_id' => $user->id,
+        'last_seen_activity_id' => $seenActivity->id,
+    ]);
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message);
+    (new TicketNotification($ticket, $event))->toMail($user);
+
+    $state = $ticket->ticketUserStates()->where('user_id', $user->id)->first();
+
+    expect($state)
+        ->last_seen_activity_id->toBe($seenActivity->id)
+        ->last_notified_activity_id->toBe($notifiedActivity->id);
 });
 
 test('generates correct email subject for different types', function () {
@@ -140,4 +175,177 @@ test('generates correct email subject for different types', function () {
     // Should contain the ticket ID and subject
     expect($subject)->toContain((string) $this->ticket->id);
     expect($subject)->toContain('Test Ticket');
+});
+
+test('queued notification renders correct message sides for each recipient without auth', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => $supporter->id,
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'user_id' => $supporter->id,
+        'sender' => ActivitySender::Supporter,
+        'type' => ActivityType::Message,
+        'content' => 'Support reply',
+    ]);
+
+    expect(auth()->user())->toBeNull();
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message);
+
+    $submitterMail = (new TicketNotification($ticket, $event))->toMail($submitter);
+    $submitterActivity = $submitterMail->viewData['activities']->first();
+
+    expect($submitterActivity)
+        ->side->toBe(ActivitySide::Other)
+        ->userName->not->toBe(__('padmission-tickets::tickets.side_you'));
+
+    $supporterMail = (new TicketNotification($ticket, $event))->toMail($supporter);
+    $supporterActivity = $supporterMail->viewData['activities']->first();
+
+    expect($supporterActivity)
+        ->side->toBe(ActivitySide::Me)
+        ->userName->toBe(__('padmission-tickets::tickets.side_you'));
+});
+
+test('queued notification includes management activities for the supporter recipient without auth', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => $supporter->id,
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'sender' => ActivitySender::System,
+        'type' => ActivityType::StatusChanged,
+        'data' => ['from' => null, 'to' => null],
+    ]);
+
+    expect(auth()->user())->toBeNull();
+
+    $event = new TicketActivityEvent($ticket, ActivityType::StatusChanged);
+
+    expect((new TicketNotification($ticket, $event))->shouldSend($supporter))->toBeTrue();
+
+    $supporterMail = (new TicketNotification($ticket, $event))->toMail($supporter);
+
+    expect($supporterMail->viewData['activities']->pluck('type'))
+        ->toContain(ActivityType::StatusChanged);
+
+    expect((new TicketNotification($ticket, $event))->shouldSend($submitter))->toBeFalse();
+});
+
+test('created notification sends even when the ticket has no unread activities', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => null,
+    ]);
+
+    expect($ticket->ticketActivities()->count())->toBe(0);
+
+    $event = new TicketCreatedEvent($ticket);
+
+    expect((new TicketNotification($ticket, $event))->shouldSend($submitter))->toBeTrue();
+});
+
+test('closed notification sends with the closed subject even after the activity notification consumed all activities', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => $supporter->id,
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'user_id' => $supporter->id,
+        'sender' => ActivitySender::Supporter,
+        'type' => ActivityType::Message,
+        'content' => 'Support reply',
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'sender' => ActivitySender::System,
+        'type' => ActivityType::Closed,
+        'data' => ['closed_by' => $supporter->id, 'disposition_id' => null],
+    ]);
+
+    $activityEvent = new TicketActivityEvent($ticket, ActivityType::Message);
+    (new TicketNotification($ticket, $activityEvent))->toMail($submitter);
+
+    $closedEvent = new TicketClosedEvent($ticket, $supporter);
+    $closedNotification = new TicketNotification($ticket, $closedEvent);
+
+    expect($closedNotification->shouldSend($submitter))->toBeTrue();
+
+    $mail = $closedNotification->toMail($submitter);
+
+    expect($mail->subject)->toBe(__('padmission-tickets::notifications.ticket-closed.subject', [
+        'subject' => $ticket->subject,
+        'ticket_id' => $ticket->id,
+    ]));
+
+    $rendered = $mail->render();
+
+    expect((string) $rendered)->toContain(__('padmission-tickets::notifications.ticket-closed.headline'));
+});
+
+test('closed notification renders pending activities when it fires before the activity notification', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => $supporter->id,
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'user_id' => $supporter->id,
+        'sender' => ActivitySender::Supporter,
+        'type' => ActivityType::Message,
+        'content' => 'Support reply',
+    ]);
+
+    TicketActivity::factory()->create([
+        'ticket_id' => $ticket->id,
+        'sender' => ActivitySender::System,
+        'type' => ActivityType::Closed,
+        'data' => ['closed_by' => $supporter->id, 'disposition_id' => null],
+    ]);
+
+    $closedEvent = new TicketClosedEvent($ticket, $supporter);
+    $closedNotification = new TicketNotification($ticket, $closedEvent);
+
+    expect($closedNotification->shouldSend($submitter))->toBeTrue();
+
+    $rendered = (string) $closedNotification->toMail($submitter)->render();
+
+    expect($rendered)->toContain('Support reply')
+        ->and($rendered)->toContain(__('padmission-tickets::notifications.ticket-closed.headline'));
+});
+
+test('activity notification is still gated on unread activities', function () {
+    Queue::fake();
+    $submitter = User::factory()->create();
+    $ticket = Ticket::factory()->create([
+        'submitter_id' => $submitter->id,
+        'assignee_id' => null,
+    ]);
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message);
+
+    expect((new TicketNotification($ticket, $event))->shouldSend($submitter))->toBeFalse();
 });

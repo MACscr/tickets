@@ -142,3 +142,52 @@ it('prunes expired attachments without an activity', function () {
 
     expect(TicketAttachment::query()->count())->toBe(2);
 });
+
+it('forbids issuing upload urls for a ticket the user cannot access', function () {
+    createStorageMock();
+
+    Gate::before(fn (User $authUser, string $ability) => $ability === 'manage' ? false : null);
+
+    $user = User::factory()->create();
+    $ticket = Ticket::factory()->create();
+
+    $this->actingAs($user);
+
+    $this
+        ->postJson(
+            route('padmission-tickets::api.attachment-url', ['ticket' => $ticket]),
+            [
+                'filename' => 'test.jpg',
+                'content_type' => 'image/jpeg',
+                'content_length' => '1024',
+            ]
+        )
+        ->assertForbidden();
+
+    $this->assertDatabaseCount(TicketAttachment::class, 0);
+});
+
+it('records the creator on new attachments', function () {
+    createStorageMock();
+
+    $user = User::factory()->create();
+    $ticket = Ticket::factory()->create(['submitter_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    $resp = $this
+        ->postJson(
+            route('padmission-tickets::api.attachment-url', ['ticket' => $ticket]),
+            [
+                'filename' => 'test.jpg',
+                'content_type' => 'image/jpeg',
+                'content_length' => '1024',
+            ]
+        )
+        ->assertOk();
+
+    $attachment = TicketAttachment::query()->findOrFail($resp->json('attachment_id'));
+
+    expect($attachment->created_by)->toBe($user->id)
+        ->and($attachment->ticket_id)->toBe($ticket->id);
+});

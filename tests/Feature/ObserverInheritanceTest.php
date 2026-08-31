@@ -11,15 +11,15 @@ use Padmission\Tickets\Events\TicketCreatedEvent;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
 use Padmission\Tickets\Models\TicketDisposition;
-use Padmission\Tickets\Models\TicketLastSeen;
 use Padmission\Tickets\Models\TicketPriority;
 use Padmission\Tickets\Models\TicketStatus;
+use Padmission\Tickets\Models\TicketUserState;
 use Padmission\Tickets\Tests\Fixtures\Models\CustomTicket;
 use Padmission\Tickets\Tests\Fixtures\Models\CustomTicketActivity;
 use Padmission\Tickets\Tests\Fixtures\Models\CustomTicketDisposition;
-use Padmission\Tickets\Tests\Fixtures\Models\CustomTicketLastSeen;
 use Padmission\Tickets\Tests\Fixtures\Models\CustomTicketPriority;
 use Padmission\Tickets\Tests\Fixtures\Models\CustomTicketStatus;
+use Padmission\Tickets\Tests\Fixtures\Models\CustomTicketUserState;
 use Padmission\Tickets\Tests\User;
 use Padmission\Tickets\TicketPlugin;
 
@@ -33,7 +33,7 @@ beforeEach(function () {
             TicketDisposition::class => CustomTicketDisposition::class,
             TicketStatus::class => CustomTicketStatus::class,
             TicketPriority::class => CustomTicketPriority::class,
-            TicketLastSeen::class => CustomTicketLastSeen::class,
+            TicketUserState::class => CustomTicketUserState::class,
         ],
     ]);
 
