@@ -4,7 +4,7 @@ namespace Padmission\Tickets\Services;
 
 use Filament\Facades\Filament;
 use Illuminate\Contracts\Auth\Authenticatable;
-use Padmission\Tickets\Enums\ActivitySender;
+use Illuminate\Support\Facades\Gate;
 use Padmission\Tickets\Models\Ticket;
 
 class TicketAuth
@@ -16,12 +16,13 @@ class TicketAuth
 
     public function authorizeTicketAccess(Ticket $ticket, ?Authenticatable $user): void
     {
-        $currentSender = $user?->getAuthIdentifier() === $ticket->submitter_id
-            ? ActivitySender::User
-            : ActivitySender::Supporter;
+        if ($user?->getAuthIdentifier() === $ticket->submitter_id) {
+            return;
+        }
 
-        $isAuthorized = $currentSender === ActivitySender::User
-            || $user?->can('manage', $ticket);
+        $isAuthorized = $user !== null
+            && Gate::forUser($user)->allows('view', $ticket)
+            && Gate::forUser($user)->allows('manage', $ticket);
 
         abort_unless($isAuthorized, 403);
     }

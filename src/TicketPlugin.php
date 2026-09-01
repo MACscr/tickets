@@ -51,6 +51,8 @@ class TicketPlugin implements Plugin
 
     protected mixed $allSupportersQuery = null;
 
+    protected mixed $currentUserAssigneeIds = null;
+
     protected mixed $initialAssignmentSupportersQuery = null;
 
     protected mixed $customTicketQuery = null;
@@ -344,6 +346,14 @@ class TicketPlugin implements Plugin
         return $this->shouldShowChatWidget;
     }
 
+    /**
+     * The closure may declare an optional `Padmission\Tickets\Models\Ticket $ticket`
+     * parameter; it is provided when supporters are resolved for a specific ticket
+     * (e.g. notification fallback when the ticket has no assignee). In multi-tenant
+     * hosts the closure MUST scope the query by the ticket's tenant whenever the
+     * ticket is provided, because resolution can run in queued or console contexts
+     * where the host's tenant scope is not bound.
+     */
     public function allSupportersQuery(Closure|Builder $query): static
     {
         $this->allSupportersQuery = $query;
@@ -358,6 +368,32 @@ class TicketPlugin implements Plugin
         }
 
         return $this->allSupportersQuery;
+    }
+
+    /**
+     * @param  Closure(): array<int, int|string>  $callback
+     */
+    public function currentUserAssigneeIds(Closure $callback): static
+    {
+        $this->currentUserAssigneeIds = $callback;
+
+        return $this;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public function getCurrentUserAssigneeIds(): array
+    {
+        if ($this->currentUserAssigneeIds instanceof Closure) {
+            $ids = app()->call($this->currentUserAssigneeIds);
+
+            return array_values(array_unique(array_map('intval', $ids)));
+        }
+
+        $id = Filament::auth()->id() ?? auth()->id();
+
+        return $id !== null ? [(int) $id] : [];
     }
 
     public function initialAssignmentSupportersQuery(Closure|Builder $query): static

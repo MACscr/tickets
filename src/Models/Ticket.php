@@ -3,6 +3,7 @@
 namespace Padmission\Tickets\Models;
 
 use Filament\Facades\Filament;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,7 +15,7 @@ use Padmission\Tickets\Models\Concerns\CanBeClosed;
 use Padmission\Tickets\Models\Concerns\HasPanelAwareRelationships;
 use Padmission\Tickets\Models\Concerns\HasTicketActivities;
 use Padmission\Tickets\Models\Concerns\HasTicketAttachments;
-use Padmission\Tickets\Models\Concerns\InteractsWithLastSeen;
+use Padmission\Tickets\Models\Concerns\InteractsWithNotifications;
 use Padmission\Tickets\Models\Concerns\ManagesPriority;
 use Padmission\Tickets\Models\Concerns\ManagesStatus;
 use Padmission\Tickets\Models\Observers\TicketObserver;
@@ -23,6 +24,7 @@ use Padmission\Tickets\ValueObjects\SubmitterData;
 /**
  * @mixin Model
  */
+#[ObservedBy(TicketObserver::class)]
 class Ticket extends Model
 {
     use CanBeAssigned;
@@ -31,7 +33,7 @@ class Ticket extends Model
     use HasPanelAwareRelationships;
     use HasTicketActivities;
     use HasTicketAttachments;
-    use InteractsWithLastSeen;
+    use InteractsWithNotifications;
     use ManagesPriority;
     use ManagesStatus;
     use SoftDeletes;
@@ -46,13 +48,6 @@ class Ticket extends Model
     ];
 
     protected static string $factory = TicketFactory::class;
-
-    protected static function boot(): void
-    {
-        parent::boot();
-
-        static::observe(TicketObserver::class);
-    }
 
     public function parentTicket(): Relations\PanelAwareBelongsTo
     {

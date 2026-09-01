@@ -2,6 +2,8 @@
 
 namespace Padmission\Tickets\Http\Controllers\Api;
 
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Validation\ValidatesRequests;
 use Illuminate\Http\Request;
@@ -17,6 +19,7 @@ use Padmission\Tickets\Http\DataMappers\TicketActivityMapper;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketActivity;
 use Padmission\Tickets\Models\TicketAttachment;
+use Padmission\Tickets\Services\TicketAuth;
 use Padmission\Tickets\TicketPlugin;
 use Tiptap\Editor;
 
@@ -37,8 +40,6 @@ class CreateMessageController
             'lock_turn' => ['boolean'],
         ]);
 
-        $this->validateAttachments($validated['attachment_ids']);
-
         // Remove global scopes to find the ticket and get its panel
         $ticketRecord = $ticketModel::withoutGlobalScopes()->findOrFail($ticket);
 
@@ -47,9 +48,15 @@ class CreateMessageController
         /** @var Ticket $ticket */
         $ticket = $panelPlugin->getTicketQuery()->findOrFail($ticket);
 
+        resolve(TicketAuth::class)->authorizeTicketAccess($ticket, $request->user());
+
+        $attachmentIds = $validated['attachment_ids'] ?? [];
+
+        $this->validateAttachments($ticket, $request->user(), $attachmentIds);
+
         $messages = collect();
 
-        $content = $validated['content'] !== null
+        $content = ($validated['content'] ?? null) !== null
             ? (new Editor)->sanitize($validated['content'])
             : null;
 
@@ -69,13 +76,13 @@ class CreateMessageController
             'content' => $content,
         ]);
 
-        $this->attachAttachments($activity, $validated['attachment_ids']);
+        $this->attachAttachments($activity, $ticket, $request->user(), $attachmentIds);
 
         $activity->side = ActivitySide::Me;
 
         $messages->push($activity);
 
-        $this->handleTurnChange($ticket, $activity, $validated['lock_turn']);
+        $this->handleTurnChange($ticket, $activity, $validated['lock_turn'] ?? false);
 
         if ($isFirstActivity) {
             $messages->push($this->createAutoResponse($ticket));
@@ -88,13 +95,19 @@ class CreateMessageController
         ];
     }
 
-    protected function validateAttachments(array $attachmentIds): void
+    protected function validateAttachments(Ticket $ticket, ?Authenticatable $user, array $attachmentIds): void
     {
-        $attachmentClass = TicketPlugin::resolveModelClass(TicketAttachment::class);
+        if (blank($attachmentIds)) {
+            return;
+        }
 
-        $attachments = $attachmentClass::query()
-            ->whereIn('id', $attachmentIds)
-            ->get();
+        $attachments = $this->pendingAttachmentsQuery($ticket, $user, $attachmentIds)->get();
+
+        if ($attachments->count() !== count(array_unique($attachmentIds))) {
+            throw ValidationException::withMessages([
+                'attachment_ids' => 'One or more attachments are invalid for this ticket.',
+            ]);
+        }
 
         foreach ($attachments as $attachment) {
             $actualSize = Storage::disk(config('padmission-tickets.attachments.disk'))->size($attachment->filepath);
@@ -111,13 +124,23 @@ class CreateMessageController
         }
     }
 
-    protected function attachAttachments(TicketActivity $activity, array $attachmentIds): void
+    protected function attachAttachments(TicketActivity $activity, Ticket $ticket, ?Authenticatable $user, array $attachmentIds): void
     {
-        $attachmentClass = TicketPlugin::resolveModelClass(TicketAttachment::class);
+        if (blank($attachmentIds)) {
+            return;
+        }
 
-        $attachmentClass::query()
-            ->whereIn('id', $attachmentIds)
+        $this->pendingAttachmentsQuery($ticket, $user, $attachmentIds)
             ->update(['activity_id' => $activity->id]);
+    }
+
+    protected function pendingAttachmentsQuery(Ticket $ticket, ?Authenticatable $user, array $attachmentIds): Builder
+    {
+        return TicketPlugin::resolveModelClass(TicketAttachment::class)::query()
+            ->whereIn('id', $attachmentIds)
+            ->where('ticket_id', $ticket->getKey())
+            ->where('created_by', $user?->getAuthIdentifier())
+            ->whereNull('activity_id');
     }
 
     protected function handleTurnChange(Ticket $ticket, TicketActivity $activity, bool $lockTurn = false): void

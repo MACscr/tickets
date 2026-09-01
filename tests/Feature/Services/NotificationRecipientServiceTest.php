@@ -1,5 +1,6 @@
 <?php
 
+use Filament\Facades\Filament;
 use Padmission\Tickets\Enums\ActivityType;
 use Padmission\Tickets\Enums\NotificationStrategy;
 use Padmission\Tickets\Events\TicketActivityEvent;
@@ -9,6 +10,7 @@ use Padmission\Tickets\Models\TicketPriority;
 use Padmission\Tickets\Models\TicketStatus;
 use Padmission\Tickets\Services\NotificationRecipientService;
 use Padmission\Tickets\Tests\User;
+use Padmission\Tickets\TicketPlugin;
 
 beforeEach(function () {
     TicketStatus::factory()->count(2)->create();
@@ -55,6 +57,111 @@ test('duplicate recipients are filtered out', function () {
     // Check that the user is in the recipients by ID
     $recipientIds = $recipients->pluck('id')->toArray();
     expect($recipientIds)->toContain($user->id);
+});
+
+test('all supporters are notified when a user-triggered event targets supporters and the ticket has no assignee', function () {
+    $submitter = User::factory()->create();
+    $supporter1 = User::factory()->create();
+    $supporter2 = User::factory()->create();
+    $ticket = Ticket::factory()->open()->create([
+        'assignee_id' => null,
+        'submitter_id' => $submitter->id,
+    ]);
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message, actor: $submitter);
+    $recipientService = app(NotificationRecipientService::class);
+
+    $recipients = $recipientService->getNotificationRecipients($event);
+
+    $recipientIds = $recipients->pluck('id')->toArray();
+    expect($recipientIds)->toContain($supporter1->id)
+        ->and($recipientIds)->toContain($supporter2->id)
+        ->and($recipientIds)->not->toContain($submitter->id);
+});
+
+test('only the assignee is notified when the ticket has an assignee', function () {
+    $submitter = User::factory()->create();
+    $assignee = User::factory()->create();
+    User::factory()->create();
+    $ticket = Ticket::factory()->open()->create([
+        'assignee_id' => $assignee->id,
+        'submitter_id' => $submitter->id,
+    ]);
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message, actor: $submitter);
+    $recipientService = app(NotificationRecipientService::class);
+
+    $recipients = $recipientService->getNotificationRecipients($event);
+
+    expect($recipients->pluck('id')->toArray())->toBe([$assignee->id]);
+});
+
+test('fallback supporters are resolved from the ticket panel plugin, not the current panel', function () {
+    $submitter = User::factory()->create();
+    $panelSupporter = User::factory()->create();
+    User::factory()->create();
+
+    Filament::getPanel('test2')->plugin(
+        TicketPlugin::make()
+            ->allSupportersQuery(fn () => User::query()->whereKey($panelSupporter->id))
+            ->registerResources()
+    );
+
+    $ticket = Ticket::factory()->open()->create([
+        'assignee_id' => null,
+        'submitter_id' => $submitter->id,
+        'panel' => 'test2',
+    ]);
+
+    expect(Filament::getCurrentOrDefaultPanel()->getId())->toBe('test');
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message, actor: $submitter);
+    $recipients = app(NotificationRecipientService::class)->getNotificationRecipients($event);
+
+    expect($recipients->pluck('id')->toArray())->toBe([$panelSupporter->id]);
+});
+
+test('fallback supporters closure receives the ticket when it declares a ticket parameter', function () {
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $receivedTicket = null;
+
+    Filament::getPanel('test')->plugin(
+        TicketPlugin::make()
+            ->allSupportersQuery(function (Ticket $ticket) use (&$receivedTicket) {
+                $receivedTicket = $ticket;
+
+                return User::query();
+            })
+            ->registerResources()
+    );
+
+    $ticket = Ticket::factory()->open()->create([
+        'assignee_id' => null,
+        'submitter_id' => $submitter->id,
+    ]);
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message, actor: $submitter);
+    $recipients = app(NotificationRecipientService::class)->getNotificationRecipients($event);
+
+    expect($receivedTicket?->getKey())->toBe($ticket->getKey())
+        ->and($recipients->pluck('id')->toArray())->toContain($supporter->id);
+});
+
+test('fallback excludes the ticket submitter even when the submitter is not the actor', function () {
+    $submitter = User::factory()->create();
+    $supporter = User::factory()->create();
+    $ticket = Ticket::factory()->open()->create([
+        'assignee_id' => null,
+        'submitter_id' => $submitter->id,
+    ]);
+
+    $event = new TicketActivityEvent($ticket, ActivityType::Message, actor: null);
+    $recipients = app(NotificationRecipientService::class)->getNotificationRecipients($event);
+
+    $recipientIds = $recipients->pluck('id')->toArray();
+    expect($recipientIds)->toContain($supporter->id)
+        ->and($recipientIds)->not->toContain($submitter->id);
 });
 
 test('user notification strategy defaults to debounced', function () {

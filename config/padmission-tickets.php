@@ -27,9 +27,10 @@ return [
         Models\TicketActivity::class => Models\TicketActivity::class,
         Models\TicketAttachment::class => Models\TicketAttachment::class,
         Models\TicketDisposition::class => Models\TicketDisposition::class,
-        Models\TicketNotification::class => Models\TicketNotification::class,
+        Models\TicketNotification::class => Models\TicketUserState::class,
         Models\TicketPriority::class => Models\TicketPriority::class,
         Models\TicketStatus::class => Models\TicketStatus::class,
+        Models\TicketUserState::class => Models\TicketUserState::class,
     ],
 
     /**
@@ -57,6 +58,11 @@ return [
     'tenancy' => [
         'enabled' => false,
         'tenancy_model' => Tenant::class,
+    ],
+
+    'levels' => [
+        // 'default' => fn () => __('padmission-tickets::tickets.levels.default'),
+        // 'escalated' => fn () => __('padmission-tickets::tickets.levels.escalated'),
     ],
 
     /**

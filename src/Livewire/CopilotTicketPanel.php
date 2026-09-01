@@ -1,0 +1,126 @@
+<?php
+
+namespace Padmission\Tickets\Livewire;
+
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\View\View;
+use Livewire\Attributes\On;
+use Livewire\Component;
+use Padmission\Tickets\Models\Ticket;
+use Padmission\Tickets\Services\CopilotTicketService;
+
+class CopilotTicketPanel extends Component
+{
+    public string $view = 'list';
+
+    public string $filter = 'open';
+
+    public ?int $activeTicketId = null;
+
+    public function mount(?int $initialTicketId = null): void
+    {
+        if (! $initialTicketId) {
+            return;
+        }
+
+        $this->selectTicket($initialTicketId);
+    }
+
+    public function render(): View
+    {
+        $user = $this->user();
+        $activeTicket = $this->activeTicket($user);
+
+        return view('padmission-tickets::livewire.copilot-ticket-panel', [
+            'activeTicket' => $activeTicket,
+            'tickets' => $this->tickets()->visibleTickets($user, $this->filter),
+        ]);
+    }
+
+    public function showList(): void
+    {
+        $this->view = 'list';
+        $this->activeTicketId = null;
+        $this->resetValidation();
+    }
+
+    public function showCreateForm(): void
+    {
+        $this->view = 'create';
+        $this->activeTicketId = null;
+        $this->resetValidation();
+    }
+
+    public function setFilter(string $filter): void
+    {
+        $this->filter = in_array($filter, ['open', 'closed', 'all'], true) ? $filter : 'open';
+        $this->showList();
+    }
+
+    public function selectTicket(int $ticketId): void
+    {
+        $ticket = $this->tickets()->findVisibleTicket($this->user(), $ticketId);
+
+        $this->tickets()->markTicketSeen($this->user(), $ticket);
+
+        $this->activeTicketId = $ticket->getKey();
+        $this->view = 'detail';
+        $this->resetValidation();
+        $this->dispatch('padmission-copilot-ticket-seen');
+    }
+
+    #[On('padmission-ticket-created-from-copilot')]
+    public function selectCreatedTicket(int $ticketId): void
+    {
+        $this->selectTicket($ticketId);
+    }
+
+    #[On('padmission-ticket-message-sent-from-copilot')]
+    public function refreshTickets(): void
+    {
+        $this->resetValidation();
+    }
+
+    public function resolveTicket(): void
+    {
+        $ticket = $this->requireActiveTicket();
+
+        $this->tickets()->resolveTicket($this->user(), $ticket);
+
+        $this->selectTicket($ticket->getKey());
+    }
+
+    protected function requireActiveTicket(): Ticket
+    {
+        if (! $this->activeTicketId) {
+            abort(404);
+        }
+
+        return $this->tickets()->findVisibleTicket($this->user(), $this->activeTicketId);
+    }
+
+    protected function activeTicket(Authenticatable&Model $user): ?Ticket
+    {
+        if (! $this->activeTicketId || $this->view !== 'detail') {
+            return null;
+        }
+
+        return $this->tickets()->findVisibleTicket($user, $this->activeTicketId);
+    }
+
+    protected function user(): Authenticatable&Model
+    {
+        $user = Auth::user();
+
+        abort_unless($user instanceof Authenticatable && $user instanceof Model, 403);
+
+        return $user;
+    }
+
+    protected function tickets(): CopilotTicketService
+    {
+        return app(CopilotTicketService::class);
+    }
+}

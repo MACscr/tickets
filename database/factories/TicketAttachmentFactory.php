@@ -12,7 +12,7 @@ class TicketAttachmentFactory extends Factory
 {
     protected $model = TicketAttachment::class;
 
-    public function getModel(): string
+    public function modelName(): string
     {
         return TicketPlugin::resolveModelClass($this->model);
     }

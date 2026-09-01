@@ -5,33 +5,27 @@ namespace Padmission\Tickets\Models;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Padmission\Tickets\Database\Factories\TicketLastSeenFactory;
+use Padmission\Tickets\Database\Factories\TicketUserStateFactory;
 use Padmission\Tickets\Models\Concerns\HasPanelAwareRelationships;
-use Padmission\Tickets\Models\Relations\PanelAwareBelongsTo;
 use Padmission\Tickets\TicketPlugin;
 
-class TicketLastSeen extends Model
+class TicketUserState extends Model
 {
     use HasFactory;
     use HasPanelAwareRelationships;
 
-    protected $table = 'ticket_last_seen';
+    protected $table = 'ticket_user_states';
 
-    protected $fillable = [
-        'ticket_id',
-        'user_id',
-        'last_seen_activity_id',
-        'last_notified_activity_id',
-    ];
+    protected $guarded = [];
 
-    protected static string $factory = TicketLastSeenFactory::class;
+    protected static string $factory = TicketUserStateFactory::class;
 
     /* Relations */
 
     /**
-     * @return PanelAwareBelongsTo<Ticket, $this>
+     * @return Relations\PanelAwareBelongsTo<Ticket, $this>
      */
-    public function ticket(): PanelAwareBelongsTo
+    public function ticket(): Relations\PanelAwareBelongsTo
     {
         return $this->panelAwareBelongsTo(
             TicketPlugin::resolveModelClass(Ticket::class),
@@ -40,9 +34,9 @@ class TicketLastSeen extends Model
     }
 
     /**
-     * @return PanelAwareBelongsTo<Model&Authenticatable, $this>
+     * @return Relations\PanelAwareBelongsTo<Model&Authenticatable, $this>
      */
-    public function user(): PanelAwareBelongsTo
+    public function user(): Relations\PanelAwareBelongsTo
     {
         return $this->panelAwareBelongsTo(
             TicketPlugin::resolveUserModelClass(),

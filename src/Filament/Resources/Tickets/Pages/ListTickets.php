@@ -28,6 +28,23 @@ class ListTickets extends ListRecords
         return 12;
     }
 
+    protected function getTableQuery(): ?Builder
+    {
+        $query = parent::getTableQuery();
+
+        if ($this->activeTabIsInvalid()) {
+            $query->tap(new CurrentPanelScope);
+        }
+
+        return TicketResource::scopeListQueryToSupporterOrSubmitter($query);
+    }
+
+    protected function activeTabIsInvalid(): bool
+    {
+        return blank($this->activeTab)
+            || ! array_key_exists($this->activeTab, $this->getCachedTabs());
+    }
+
     protected function getHeaderWidgets(): array
     {
         return [
@@ -47,14 +64,17 @@ class ListTickets extends ListRecords
         $tabs = [
             'all' => Tab::make()
                 ->label(__('padmission-tickets::tickets.resources.tickets.tabs.all'))
-                ->modifyQueryUsing(fn (Builder $query) => $query->tap(new CurrentPanelScope)),
+                ->modifyQueryUsing(fn (Builder $query) => TicketResource::scopeListQueryToSupporterOrSubmitter(
+                    $query->tap(new CurrentPanelScope)
+                )),
 
             'my' => Tab::make()
                 ->label(__('padmission-tickets::tickets.resources.tickets.tabs.my'))
-                ->modifyQueryUsing(fn (Builder $query) => $query
-                    ->tap(new CurrentPanelScope)
-                    ->where('assignee_id', Filament::auth()->id())
-                ),
+                ->modifyQueryUsing(fn (Builder $query) => TicketResource::scopeListQueryToSupporterOrSubmitter(
+                    $query
+                        ->tap(new CurrentPanelScope)
+                        ->whereIn('assignee_id', TicketPlugin::get()->getCurrentUserAssigneeIds() ?: [0])
+                )),
         ];
 
         if (! TicketPlugin::get()->hasLinkedTickets()) {
@@ -63,16 +83,17 @@ class ListTickets extends ListRecords
 
         $tabs['linked'] = Tab::make()
             ->label(__('padmission-tickets::tickets.resources.tickets.tabs.linked'))
-            ->modifyQueryUsing(fn (Builder $query) => $query
-                ->whereHas('childTickets', fn (Builder $query) => $query->where('panel', Filament::getCurrentOrDefaultPanel()->getId()))
-            );
+            ->modifyQueryUsing(fn (Builder $query) => TicketResource::scopeListQueryToSupporterOrSubmitter(
+                $query->whereHas('childTickets', fn (Builder $query) => $query->where('panel', Filament::getCurrentOrDefaultPanel()->getId()))
+            ));
 
         $tabs['my_linked'] = Tab::make()
             ->label(__('padmission-tickets::tickets.resources.tickets.tabs.my_linked'))
-            ->modifyQueryUsing(fn (Builder $query) => $query
-                ->whereHas('childTickets', fn (Builder $query) => $query->where('panel', Filament::getCurrentOrDefaultPanel()->getId()))
-                ->where('submitter_id', Filament::auth()->id())
-            );
+            ->modifyQueryUsing(fn (Builder $query) => TicketResource::scopeListQueryToSupporterOrSubmitter(
+                $query
+                    ->whereHas('childTickets', fn (Builder $query) => $query->where('panel', Filament::getCurrentOrDefaultPanel()->getId()))
+                    ->where('submitter_id', Filament::auth()->id())
+            ));
 
         return $tabs;
     }

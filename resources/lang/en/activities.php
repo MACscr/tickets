@@ -6,6 +6,7 @@ return [
     'status_changed' => 'Status Changed from :from to :to',
     'priority_changed' => 'Priority Changed from :from to :to',
     'turn_changed' => 'Turn Changed from :from to :to',
+    'unknown' => 'Unknown',
     'assigned_to' => 'Assigned to :name',
     'unassigned' => 'Unassigned',
     'user_display' => [

@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Padmission\Tickets\Models\Ticket;
 use Padmission\Tickets\Models\TicketAttachment;
+use Padmission\Tickets\Services\TicketAuth;
 use Padmission\Tickets\TicketPlugin;
 use Ramsey\Uuid\Uuid;
 
@@ -18,7 +19,19 @@ class TemporaryAttachmentUploadUrlController
 
     public function __invoke(Request $request, int $ticket): array
     {
-        $this->authorize('create', TicketPlugin::resolveModelClass(Ticket::class));
+        $ticketModel = TicketPlugin::resolveModelClass(Ticket::class);
+
+        $this->authorize('create', $ticketModel);
+
+        // Remove global scopes to find the ticket and get its panel
+        $ticketRecord = $ticketModel::withoutGlobalScopes()->findOrFail($ticket);
+
+        // Get the plugin for this ticket's panel and verify against custom query
+        $panelPlugin = TicketPlugin::get($ticketRecord->panel);
+        /** @var Ticket $ticketRecord */
+        $ticketRecord = $panelPlugin->getTicketQuery()->findOrFail($ticket);
+
+        resolve(TicketAuth::class)->authorizeTicketAccess($ticketRecord, $request->user());
 
         $request->validate([
             'filename' => ['required', 'string', 'max:255'],
@@ -44,7 +57,8 @@ class TemporaryAttachmentUploadUrlController
         ]);
 
         $attachment = TicketPlugin::resolveModelClass(TicketAttachment::class)::create([
-            'ticket_id' => $ticket,
+            'ticket_id' => $ticketRecord->getKey(),
+            'created_by' => $request->user()?->getAuthIdentifier(),
             'filename' => $filename,
             'filepath' => $filepath,
             'preview_filepath' => $previewFilePath,

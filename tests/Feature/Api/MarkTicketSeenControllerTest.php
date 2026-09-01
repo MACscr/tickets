@@ -20,7 +20,7 @@ test('can mark ticket as seen with valid activity', function () {
     $response->assertOk();
     $response->assertJson(['success' => true]);
 
-    $lastSeen = $ticket->ticketLastSeen()->where('user_id', $this->user->id)->first();
+    $lastSeen = $ticket->ticketUserStates()->where('user_id', $this->user->id)->first();
     expect($lastSeen)->not->toBeNull();
     expect($lastSeen->last_seen_activity_id)->toBe($activity->id);
 });
@@ -65,8 +65,8 @@ test('updates existing last_seen record', function () {
         'last_seen_activity_id' => $activity2->id,
     ]);
 
-    expect($ticket->ticketLastSeen()->count())->toBe(1);
-    expect($ticket->ticketLastSeen()->first()->last_seen_activity_id)->toBe($activity2->id);
+    expect($ticket->ticketUserStates()->where('user_id', $this->user->id)->count())->toBe(1);
+    expect($ticket->ticketUserStates()->where('user_id', $this->user->id)->first()->last_seen_activity_id)->toBe($activity2->id);
 });
 
 test('requires authentication', function () {

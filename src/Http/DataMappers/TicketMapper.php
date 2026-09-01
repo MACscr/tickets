@@ -12,9 +12,9 @@ class TicketMapper
     {
         return [
             'id' => $ticket->id,
-            'subject' => $ticket->subject,
+            'subject' => html_entity_decode($ticket->subject, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
             'status' => TicketStatusMapper::map($ticket->status),
-            'latest_message' => str($ticket->latestMessage?->content)->stripTags()->words(20),
+            'latest_message' => $ticket->latestMessage?->plainTextContent(20),
             'is_closed' => $ticket->isClosed,
             'needs_attention' => $ticket->turn === Turn::User,
             'is_unread' => $user ? $ticket->hasUnreadMessagesFor($user) : false,

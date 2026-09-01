@@ -7,10 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
-use Padmission\Tickets\Models\TicketLastSeen;
+use Padmission\Tickets\Enums\ActivitySender;
+use Padmission\Tickets\Enums\ActivityType;
+use Padmission\Tickets\Models\TicketUserState;
 use Padmission\Tickets\TicketPlugin;
 
-trait InteractsWithLastSeen
+trait InteractsWithNotifications
 {
     public function getNotificationRecipients(): Collection
     {
@@ -45,33 +47,44 @@ trait InteractsWithLastSeen
         return $relation;
     }
 
-    public function ticketLastSeen(): HasMany
+    public function ticketUserStates(): HasMany
     {
         $relation = $this->hasMany(
-            TicketPlugin::resolveModelClass(TicketLastSeen::class),
+            TicketPlugin::resolveModelClass(TicketUserState::class),
             'ticket_id'
         );
 
         $modifier = TicketPlugin::get()->getRelationshipScopeModifier();
         if ($modifier) {
-            $relation = app()->call($modifier, ['relation' => $relation, 'model' => 'ticketLastSeen']);
+            $relation = app()->call($modifier, ['relation' => $relation, 'model' => 'ticketUserStates']);
         }
 
         return $relation;
     }
 
+    public function ticketNotifications(): HasMany
+    {
+        return $this->ticketUserStates();
+    }
+
     public function hasUnreadMessagesFor(Authenticatable $user): bool
     {
-        $lastSeen = $this->ticketLastSeen()
+        $userState = $this->ticketUserStates()
             ->where('user_id', $user->getAuthIdentifier())
             ->first();
 
-        if (! $lastSeen || ! $lastSeen->last_seen_activity_id) {
-            return $this->ticketActivities()->exists();
+        $unreadSender = (int) $user->getAuthIdentifier() === (int) $this->submitter_id
+            ? ActivitySender::Supporter
+            : ActivitySender::User;
+
+        $query = $this->ticketActivities()
+            ->where('type', ActivityType::Message->value)
+            ->where('sender', $unreadSender->value);
+
+        if ($userState?->last_seen_activity_id) {
+            $query->where('id', '>', $userState->last_seen_activity_id);
         }
 
-        return $this->ticketActivities()
-            ->where('id', '>', $lastSeen->last_seen_activity_id)
-            ->exists();
+        return $query->exists();
     }
 }
